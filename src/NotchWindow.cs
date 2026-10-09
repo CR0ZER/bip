@@ -19,6 +19,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
@@ -38,6 +39,7 @@ namespace ClaudeNotch
     {
         const int MAX_CLOUDS = 5;
         const double PANEL_W = 430;
+        const double PANEL_SCALE = 0.86;   // tout le panneau d'un bloc : textes, boutons, cartes
         static readonly TimeSpan FLASH_AFTER = TimeSpan.FromMinutes(5);
         static readonly TimeSpan FLASH_EVERY = TimeSpan.FromSeconds(30);
         static readonly TimeSpan ARM_DELAY   = TimeSpan.FromMilliseconds(600);
@@ -55,6 +57,9 @@ namespace ClaudeNotch
         readonly Border _panel = new Border();
         readonly StackPanel _content = new StackPanel();
         readonly ScrollViewer _scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+
+        readonly ScaleTransform _zoom = new ScaleTransform(1, 1);
+        int _anim;   // jeton : une animation plus recente annule la fin d'une ancienne
 
         readonly Dictionary<Pending, FrameworkElement> _cards = new Dictionary<Pending, FrameworkElement>();
         readonly List<Tuple<UIElement, Func<DateTime>>> _pulse = new List<Tuple<UIElement, Func<DateTime>>>();
@@ -113,7 +118,7 @@ namespace ClaudeNotch
             _pill.Background = BgPill;
             _pill.BorderBrush = Line;
             _pill.BorderThickness = new Thickness(1);
-            _pill.Padding = new Thickness(8, 0, 8, 0);
+            _pill.Padding = new Thickness(6, 0, 6, 0);
             _pill.Child = _clouds;
             _pill.Cursor = Cursors.Hand;
             _pill.MouseLeftButtonUp += (s, e) => Native.FocusClaude();
@@ -128,6 +133,8 @@ namespace ClaudeNotch
             _panel.Width = PANEL_W;
             _panel.Child = _scroll;
             _panel.Visibility = Visibility.Collapsed;
+            _panel.LayoutTransform = new ScaleTransform(PANEL_SCALE, PANEL_SCALE);
+            _panel.RenderTransform = _zoom;
             _panel.ContextMenu = BuildMenu();
 
             Content = _stack;
@@ -261,11 +268,12 @@ namespace ClaudeNotch
             var h = m == "gauche" ? HorizontalAlignment.Left : HorizontalAlignment.Center;
             _pill.HorizontalAlignment = h;
             _panel.HorizontalAlignment = h;
+            _panel.RenderTransformOrigin = new Point(m == "gauche" ? 0 : 0.5, m == "haut" ? 0 : 1);
 
             if (m == "haut")
             {
-                _pill.Height = 30;
-                _pill.CornerRadius = new CornerRadius(0, 0, 14, 14);
+                _pill.Height = 26;
+                _pill.CornerRadius = new CornerRadius(0, 0, 12, 12);
                 _pill.BorderThickness = new Thickness(1, 0, 1, 1);
                 _panel.Margin = new Thickness(0, 8, 0, 0);
                 _stack.Children.Add(_pill);
@@ -273,8 +281,8 @@ namespace ClaudeNotch
             }
             else
             {
-                _pill.Height = 36;
-                _pill.CornerRadius = new CornerRadius(18);
+                _pill.Height = 30;
+                _pill.CornerRadius = new CornerRadius(15);
                 _pill.BorderThickness = new Thickness(1);
                 _panel.Margin = new Thickness(0, 0, 0, 10);
                 _stack.Children.Add(_panel);
@@ -435,7 +443,7 @@ namespace ClaudeNotch
             if (shown.Count == 0)
             {
                 // Au repos : un nuage discret, pour garder le survol et le clic droit.
-                var idle = Cloud(St.Stale, 24);
+                var idle = Cloud(St.Stale, 19);
                 idle.Opacity = 0.4;
                 idle.ToolTip = "ClaudeNotch — aucune session active";
                 _clouds.Children.Add(idle);
@@ -444,7 +452,7 @@ namespace ClaudeNotch
 
             foreach (var v in shown)
             {
-                var c = Cloud(v.State, 26);
+                var c = Cloud(v.State, 21);
                 c.Margin = new Thickness(2, 0, 2, 0);
                 c.ToolTip = v.S.Name + " — " + States.Label(v.State);
                 _clouds.Children.Add(c);
@@ -455,7 +463,7 @@ namespace ClaudeNotch
             {
                 var more = new TextBlock
                 {
-                    Text = "+" + extra, Foreground = extraWaiting ? Red : Muted, FontSize = 12,
+                    Text = "+" + extra, Foreground = extraWaiting ? Red : Muted, FontSize = 11,
                     FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 2, 0)
                 };
                 _clouds.Children.Add(more);
@@ -526,17 +534,42 @@ namespace ClaudeNotch
             _panelSig = "";
             RenderPanel();
             _scroll.ScrollToTop();   // les demandes sont en tete : toujours les montrer
-            _panel.Visibility = Visibility.Visible;
+            AnimatePanel(true);
         }
 
         void Collapse()
         {
             if (!_expanded) return;
             _expanded = false;
-            _panel.Visibility = Visibility.Collapsed;
+            AnimatePanel(false);
             // Les nuages du panneau ne comptent plus pour l'escalade (clignotement de Claude).
             _pulse.RemoveAll(t => !_clouds.Children.Contains(t.Item1));
             if (_activatable) SetActivatable(false);
+        }
+
+        // Ouverture : fondu et zoom de 94 % a 100 % depuis la pastille (180 ms).
+        // Fermeture : l'inverse en 130 ms, puis le panneau sort de la mise en page
+        // (la fenetre se reduit alors a la pastille).
+        void AnimatePanel(bool open)
+        {
+            int token = ++_anim;
+            bool fromHidden = open && _panel.Visibility != Visibility.Visible;
+            if (open) _panel.Visibility = Visibility.Visible;
+
+            var dur = new Duration(TimeSpan.FromMilliseconds(open ? 180 : 130));
+            var ease = new CubicEase { EasingMode = open ? EasingMode.EaseOut : EasingMode.EaseIn };
+            Func<double, double, DoubleAnimation> anim = (from, to) =>
+            {
+                var a = new DoubleAnimation { To = to, Duration = dur, EasingFunction = ease };
+                if (fromHidden) a.From = from;   // sinon : repart de la valeur courante
+                return a;
+            };
+
+            var fade = anim(0, open ? 1 : 0);
+            if (!open) fade.Completed += (s, e) => { if (token == _anim) _panel.Visibility = Visibility.Collapsed; };
+            _panel.BeginAnimation(UIElement.OpacityProperty, fade);
+            _zoom.BeginAnimation(ScaleTransform.ScaleXProperty, anim(0.94, open ? 1 : 0.96));
+            _zoom.BeginAnimation(ScaleTransform.ScaleYProperty, anim(0.94, open ? 1 : 0.96));
         }
 
         void RenderPanel()

@@ -1,0 +1,8 @@
+# binaires produits par build.cmd
+*.exe
+NotchHook.new
+
+# etat et reglages locaux
+state/
+config.txt
+notch.log

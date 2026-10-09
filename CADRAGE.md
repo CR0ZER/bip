@@ -131,6 +131,10 @@ ajustements issus des relectures.
 - **Test réel dans l'app desktop** : une vraie AskUserQuestion de Claude a été
   interceptée, affichée et répondue depuis l'encoche ; Claude a reçu la
   réponse sans afficher sa propre question.
+- **Test réel de permission dans l'app desktop** (2026-10-09) : session passée
+  en mode normal, `mkdir` demandé. La carte est apparue dans l'encoche, Florian
+  a cliqué Autoriser, et le journal de session enregistre une décision
+  « allow » venant du hook, sans fenêtre de permission de Claude.
 - Repli sûr : encoche fermée → le hook rend la main en moins d'une seconde ;
   hook tué → la carte disparaît ; validation de plan et demandes illisibles
   rendues aussitôt à Claude.
@@ -142,10 +146,6 @@ ajustements issus des relectures.
   une réponse.
 
 ### Reste à vérifier par Florian
-- Une vraie **demande de permission** dans l'app desktop. Ce mode n'était pas
-  testable depuis la session de développement, en mode auto. À faire dans une
-  session en mode normal : lui demander une commande qui exige une
-  autorisation, puis répondre depuis l'encoche.
 - Le comportement de la barre des tâches quand on clique dessus : l'encoche se
   replace au premier plan, avec un léger scintillement possible. Si c'est
   gênant, clic droit → Position → En haut au centre.

@@ -1,6 +1,6 @@
 # ClaudeNotch — cadrage
 
-maj : 2026-10-08 · statut : en attente du feu vert de Florian (aucun code écrit)
+maj : 2026-10-09 · statut : v1 livrée et installée (voir « Livraison » en fin de fichier)
 
 Évolution de ClaudeVoyant (`Documents\ClaudeVoyant`) en « encoche » posée sur la
 barre des tâches Windows, inspirée de coucou (github.com/Louis-CFM/coucou, MIT).
@@ -108,3 +108,50 @@ Les choix par défaut s'appliquent sauf réponse contraire de Florian.
 9. **Attente / erreur** : attente = rouge qui clignote, erreur = rouge fixe avec
    un « ! ». *Défaut : oui.*
 10. **Son** à l'arrivée d'une demande. *Défaut : non.*
+
+## Livraison du 2026-10-09
+
+### Réponses aux questions ouvertes
+Florian n'a pas répondu : les choix par défaut s'appliquent, avec deux
+ajustements issus des relectures.
+- Une session « en cours » dont Claude tourne toujours expire au bout de 1 h
+  sans nouvel outil. Une interruption (Échap) n'émet pas de `Stop`, et la
+  session resterait sinon jaune indéfiniment. Sans PID, ClaudeVoyant expirait
+  au bout de 20 min.
+- « Toujours » : un bouton par suggestion de Claude, avec sa portée en clair
+  (« toutes les modifications de fichiers », « Edit(src/**) », « accès à un
+  dossier »), et non un bouton unique qui appliquerait tout d'un coup.
+
+### Vérifié
+- Affichage : 5 nuages dans l'ordre de lancement, panneau au survol, demandes
+  en tête, position automatique en bas à gauche (barre des tâches centrée).
+- Permissions : Autoriser, Refuser, Toujours (par suggestion), Répondre dans
+  Claude ; pas de Toujours pour Bash et PowerShell. Sorties JSON conformes.
+- AskUserQuestion : choix unique, multiple, « Autre… » au clavier, accents.
+- **Test réel dans l'app desktop** : une vraie AskUserQuestion de Claude a été
+  interceptée, affichée et répondue depuis l'encoche ; Claude a reçu la
+  réponse sans afficher sa propre question.
+- Repli sûr : encoche fermée → le hook rend la main en moins d'une seconde ;
+  hook tué → la carte disparaît ; validation de plan et demandes illisibles
+  rendues aussitôt à Claude.
+- Installeur : n'ajoute que ses entrées ; désinstallation → `settings.json`
+  identique octet pour octet à l'original.
+- Relectures justesse et sécurité (sous-agents) : corrections appliquées.
+  Parmi elles : caractères invisibles neutralisés, délai d'armement quand la
+  liste bouge, commande jamais coupée en silence, retour à « en cours » après
+  une réponse.
+
+### Reste à vérifier par Florian
+- Une vraie **demande de permission** dans l'app desktop. Ce mode n'était pas
+  testable depuis la session de développement, en mode auto. À faire dans une
+  session en mode normal : lui demander une commande qui exige une
+  autorisation, puis répondre depuis l'encoche.
+- Le comportement de la barre des tâches quand on clique dessus : l'encoche se
+  replace au premier plan, avec un léger scintillement possible. Si c'est
+  gênant, clic droit → Position → En haut au centre.
+
+### Limites connues
+- En plein écran, l'encoche se masque et une demande reste en attente (au plus
+  1 h, puis Claude reprend la main) jusqu'au retour sur le bureau.
+- Les aperçus visuels des options AskUserQuestion ne sont pas affichés.
+- Le clic sur une session met l'app Claude au premier plan, pas l'onglet précis.

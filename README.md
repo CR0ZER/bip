@@ -20,8 +20,8 @@ ouverte peut demander un redémarrage.
 ## Utilisation
 
 - **Repliée** : jusqu'à 5 nuages dans l'ordre de lancement des sessions, puis
-  « +N ». Pastille verte = prêt, jaune = en cours, rouge qui respire = en
-  attente, rouge avec « ! » = erreur.
+  « +N ». Pastille du logo (comme ClaudeVoyant) : verte = prêt, orange = en
+  cours, rouge qui respire = en attente, rouge avec « ! » = erreur.
 - **Survol** : le panneau se déplie. Les demandes en attente sont en tête, en
   grand, avec leurs boutons. Clic sur une session ou sur l'encoche : met Claude
   au premier plan.

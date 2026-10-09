@@ -81,22 +81,11 @@ namespace ClaudeNotch
         static readonly Brush BgPill   = B(0xF0161618), BgPanel = B(0xF51C1C1F), Line = B(0x30FFFFFF);
         static readonly Brush Ink      = B(0xFFF2F2F4), Muted = B(0xFF9C9CA6), Faint = B(0xFF6E6E78);
         static readonly Brush CodeBg   = B(0xFF111113), CardBg = B(0xFF2A1D1E), CardLine = B(0x88EF0E0E);
-        static readonly Brush Green    = B(0xFF00DD27), Yellow = B(0xFFFFEE00), Red = B(0xFFEF0E0E);
+        static readonly Brush Red      = B(0xFFEF0E0E);
         static readonly Brush BtnAllow = B(0xFF1F7A35), BtnDeny = B(0xFF7A1F24), BtnNeutral = B(0xFF34343A), BtnSel = B(0xFF3B4C8C);
         static readonly Brush DiffDel  = B(0xFFFF8A8A), DiffAdd = B(0xFF8AE39A), RowHover = B(0x14FFFFFF);
         static readonly FontFamily Ui = new FontFamily("Segoe UI Variable Text, Segoe UI");
         static readonly FontFamily Mono = new FontFamily("Cascadia Mono, Consolas");
-
-        static Brush DotOf(St s)
-        {
-            switch (s)
-            {
-                case St.Ready: return Green;
-                case St.Busy:  return Yellow;
-                case St.Stale: return Faint;
-                default:       return Red;
-            }
-        }
 
         ImageSource Clawd(St s)
         {
@@ -485,20 +474,24 @@ namespace ClaudeNotch
             return v != null && v.State == St.Waiting ? v.Since : DateTime.Now;
         }
 
-        // Nuage clawd de la couleur de l'etat, avec sa pastille.
+        // Nuage clawd : la pastille d'etat fait partie de l'image (quart bas-droit,
+        // de 55 % a 98 % du cote). Pour une erreur, un "!" blanc se pose dessus.
         FrameworkElement Cloud(St s, double size)
         {
-            var g = new Grid { Width = size + 4, Height = size + 2 };
+            var g = new Grid { Width = size + 4, Height = size };
             g.Children.Add(new Image { Source = Clawd(s), Width = size, Height = size, Stretch = Stretch.Uniform });
-            var dot = new Grid { Width = 9, Height = 9, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom };
-            dot.Children.Add(new Ellipse { Fill = DotOf(s), Stroke = BgPill, StrokeThickness = 1.5 });
             if (s == St.Error)
             {
-                dot.Width = dot.Height = 11;
-                dot.Children.Add(new TextBlock { Text = "!", FontSize = 8, FontWeight = FontWeights.Bold, Foreground = Brushes.White,
+                var spot = new Grid
+                {
+                    Width = size * 0.43, Height = size * 0.43,
+                    HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+                    Margin = new Thickness(2 + size * 0.55, size * 0.55, 0, 0)
+                };
+                spot.Children.Add(new TextBlock { Text = "!", FontSize = size * 0.36, FontWeight = FontWeights.Black, Foreground = Brushes.White,
                     HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
+                g.Children.Add(spot);
             }
-            if (s != St.Stale) g.Children.Add(dot);
             return g;
         }
 

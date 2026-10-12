@@ -16,7 +16,7 @@ qui a fini et qui t'attend, et tu réponds sans changer de fenêtre.
 
 **🇫🇷 Français** · [🇬🇧 English](#english)
 
-<img src="docs/screenshots/permission.png" width="640" alt="Encoche dépliée : une demande de permission et deux sessions">
+<img src="docs/screenshots/permission.png" width="640" alt="Encoche dépliée : une demande de permission, une commande et deux sessions">
 
 </div>
 
@@ -36,13 +36,18 @@ répondre directement.
 
 | Repliée | Une demande arrive |
 |:---:|:---:|
-| <img src="docs/screenshots/repliee.png" width="400" alt="Encoche repliée, trois sessions"> | <img src="docs/screenshots/entrouverte.png" width="400" alt="Encoche entrouverte : data-pipeline attend ta réponse"> |
-| Un Bip par session, dans l'ordre de lancement (5 au plus, puis « +N »). | L'encoche s'entrouvre 4 s pour dire qui attend, puis se replie ; un éclat rouge balaie son bord tant que la demande est ouverte. |
+| <img src="docs/screenshots/repliee.png" width="400" alt="Encoche repliée, quatre Bip"> | <img src="docs/screenshots/entrouverte.png" width="400" alt="Encoche entrouverte : data-pipeline attend ta réponse"> |
+| Un Bip par session ou commande suivie, dans l'ordre de lancement (5 au plus, puis « +N »). | L'encoche s'entrouvre 4 s pour dire qui attend, puis se replie ; un éclat rouge balaie son bord tant que la demande est ouverte. |
 
 | Répondre à une question | Encoche vide |
 |:---:|:---:|
 | <img src="docs/screenshots/question.png" width="400" alt="Carte de question à choix"> | <img src="docs/screenshots/encoche-vide.png" width="400" alt="Bip salue, dernières sessions et bilan du jour"> |
 | Choix unique, choix multiple ou réponse libre (« Autre… »). | Plus rien ne tourne : Bip se réveille, salue, montre les dernières sessions et le bilan du jour. |
+
+| Commandes suivies (`bip run`) | Réglages (☰) |
+|:---:|:---:|
+| <img src="docs/screenshots/commandes.png" width="400" alt="Commandes en cours, finie et en échec, avec leur croix"> | <img src="docs/screenshots/reglages.png" width="400" alt="Réglages intégrés sous l'encoche vide"> |
+| En cours, finie ou en échec avec son code ; une croix les retire. | Le bouton ☰ ajoute les réglages sous le contenu de l'encoche. |
 
 ## Bip
 
@@ -106,6 +111,8 @@ auto) et le résultat.
   filtres par période, projet, décision et texte, et export CSV.
 - Conservé 90 jours, sur le poste uniquement.
 
+<img src="docs/screenshots/rapport-audit.png" width="760" alt="Rapport d'audit : chaîne intacte, filtres, actions autorisées, refusées et règles">
+
 ### Règles suggérées
 
 Après **5 autorisations de la même commande dans un projet** (`npm test`, `pytest`…), Bip
@@ -114,6 +121,8 @@ dans `.claude/settings.local.json`, non versionné), **Partout**, ou **Non, ne p
 Jamais de suggestion pour une commande composée, risquée (suppression, `git push`, réseau,
 interpréteur…) ou trop large. Les règles créées se retirent d'un clic depuis les réglages (☰), et chaque
 ajout ou retrait est inscrit au journal d'audit.
+
+<p align="center"><img src="docs/screenshots/regle.png" width="560" alt="Carte de permission avec une règle suggérée : Ce projet, Partout, Non, ne plus proposer"></p>
 
 ## Installation
 
@@ -261,13 +270,18 @@ right there.
 
 | Collapsed | A request comes in |
 |:---:|:---:|
-| <img src="docs/screenshots/repliee.png" width="400" alt="Collapsed notch, three sessions"> | <img src="docs/screenshots/entrouverte.png" width="400" alt="Peeking notch: data-pipeline is waiting for you"> |
-| One Bip per session, in launch order (5 at most, then "+N"). | The notch peeks open for 4 s to say who is waiting, then folds back; a red glow sweeps its edge while the request is open. |
+| <img src="docs/screenshots/repliee.png" width="400" alt="Collapsed notch, four Bips"> | <img src="docs/screenshots/entrouverte.png" width="400" alt="Peeking notch: data-pipeline is waiting for you"> |
+| One Bip per session or tracked command, in launch order (5 at most, then "+N"). | The notch peeks open for 4 s to say who is waiting, then folds back; a red glow sweeps its edge while the request is open. |
 
 | Answering a question | Empty notch |
 |:---:|:---:|
 | <img src="docs/screenshots/question.png" width="400" alt="Multiple-choice question card"> | <img src="docs/screenshots/encoche-vide.png" width="400" alt="Bip says hello, recent sessions and today's summary"> |
 | Single choice, multiple choice or free text ("Autre…"). | Nothing running: Bip wakes up, says hello, and shows recent sessions and today's summary. |
+
+| Tracked commands (`bip run`) | Settings (☰) |
+|:---:|:---:|
+| <img src="docs/screenshots/commandes.png" width="400" alt="Running, finished and failed commands, each with its cross"> | <img src="docs/screenshots/reglages.png" width="400" alt="Settings below the empty notch"> |
+| Running, done, or failed with its exit code; a cross removes them. | The ☰ button adds the settings below the notch content. |
 
 ### Meet Bip
 
@@ -328,6 +342,8 @@ who allowed it (you in Bip, you in Claude, a rule, auto mode) and the outcome.
   period, project, decision and text, plus CSV export.
 - Kept 90 days, on the machine only.
 
+<img src="docs/screenshots/rapport-audit.png" width="760" alt="Audit report: intact chain, filters, allowed and denied actions, rules">
+
 #### Suggested rules
 
 After **5 approvals of the same command in a project** (`npm test`, `pytest`…), Bip offers to
@@ -336,6 +352,8 @@ unversioned `.claude/settings.local.json`), **everywhere**, or **never suggest a
 compound, risky (deletion, `git push`, network, interpreters…) or overly broad commands. Rules
 created by Bip can be removed in one click from the settings (☰), and every change is written to the
 audit log.
+
+<p align="center"><img src="docs/screenshots/regle.png" width="560" alt="Permission card with a suggested rule: this project, everywhere, never suggest again"></p>
 
 ### Installation
 

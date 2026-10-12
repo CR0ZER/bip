@@ -93,6 +93,41 @@ static class AuditTests
         }
         finally { try { Directory.Delete(root, true); } catch { } }
 
+        Console.WriteLine("Lecteur JSON");
+        var o = Json.Obj(Json.Parse("{\"a\":\"\\u00e9t\\u00e9 \\\"x\\\"\\n\",\"n\":42,\"big\":12345678901,\"f\":1.5e2,\"neg\":-3,\"t\":true,\"z\":null,\"arr\":[1,{\"b\":[]}],\"e\":{}}"));
+        Check("chaine avec echappements", Json.Str(o, "a") == "été \"x\"\n");
+        Check("nombres : int, long, decimal", Json.Get(o, "n") is int && Json.Get(o, "big") is long && Convert.ToDouble(Json.Get(o, "f")) == 150 && (int)Json.Get(o, "neg") == -3);
+        Check("vrai, null, tableau, objet vide", (bool)Json.Get(o, "t") && Json.Get(o, "z") == null && Json.Arr(Json.Get(o, "arr")).Length == 2 && Json.Obj(Json.Get(o, "e")).Count == 0);
+        Check("aller-retour Write -> Parse", Json.Str(Json.Obj(Json.Parse(Json.Write(o))), "a") == "été \"x\"\n");
+        bool threw = false;
+        try { Json.Parse("{\"a\":1,}"); } catch (FormatException) { threw = true; }
+        Check("JSON invalide refuse", threw);
+        threw = false;
+        try { Json.Parse("{\"a\":\"coup"); } catch (FormatException) { threw = true; }
+        Check("ligne coupee refusee", threw);
+
+        Console.WriteLine("Lecture incrementale du journal");
+        root = Path.Combine(Path.GetTempPath(), "bip-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            for (int i = 0; i < 3; i++)
+                Audit.Write(root, "outil", new Dictionary<string, object> { { "sess", "s" }, { "tool", "Bash" }, { "obj", "echo " + i }, { "tuid", "u" + i } });
+            Check("3 actions lues", Audit.Rows(root, 1).Count == 3);
+            Audit.Write(root, "fait", new Dictionary<string, object> { { "sess", "s" }, { "tool", "Bash" }, { "obj", "echo 1" }, { "tuid", "u1" } });
+            Audit.Write(root, "outil", new Dictionary<string, object> { { "sess", "s" }, { "tool", "Bash" }, { "obj", "echo 3" }, { "tuid", "u3" } });
+            var rows = Audit.Rows(root, 1);
+            Check("ajouts lus, resultat rattache a une action deja en cache", rows.Count == 4 && rows[1].Outcome == "réussi");
+            var file = Directory.GetFiles(Path.Combine(root, "audit"))[0];
+            File.AppendAllText(file, "{\"ev\":\"outil\",\"sess\":\"s\",\"tool\":\"Bash\",\"obj\":\"moi");
+            Check("ligne en cours d'ecriture ignoree", Audit.Rows(root, 1).Count == 4);
+            File.AppendAllText(file, "tie\"}\n");
+            Check("ligne terminee lue ensuite", Audit.Rows(root, 1).Count == 5);
+            File.WriteAllText(file, "");
+            Check("fichier raccourci relu en entier", Audit.Rows(root, 1).Count == 0);
+        }
+        finally { try { Directory.Delete(root, true); } catch { } }
+
         Console.WriteLine(_fail == 0 ? "Tous les tests passent." : _fail + " test(s) en échec.");
         return _fail == 0 ? 0 : 1;
     }

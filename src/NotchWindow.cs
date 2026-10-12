@@ -49,6 +49,7 @@ namespace ClaudeNotch
         const int MAX_BIPS = 5;
         const double PEEK_W = 320, PEEK_H = 60;
         const double EXP_W = 440, EXP_PAD = 12;
+        const double TOP_PAD = 20;   // depliee : place du bouton de reglages en haut a droite
         const double SHOULDER = 8;
         const double WIN_W = EXP_W + 2 * SHOULDER + 80;   // marge pour l'ombre portee
         const double WIN_MARGIN = 44;                     // sous l'encoche : ombre portee (12 + 28)
@@ -70,7 +71,7 @@ namespace ClaudeNotch
         }
         static readonly Brush Black = B(0x000000), Card = B(0x161616), Btn2 = B(0x2A2A2A), Always = B(0x333333), Sep = B(0x1C1C1C);
         static readonly Brush Ink = B(0xF2F2F2), Code = B(0xE6E6E6), Muted = B(0xA3A3A3), WaitRed = B(0xFF5D52);
-        static readonly Brush DiffDel = B(0xFF8A8A), DiffAdd = B(0x8AE39A), Hover = B(0xFFFFFF, 0x12);
+        static readonly Brush DiffDel = B(0xFF8A8A), DiffAdd = B(0x8AE39A), Hover = B(0xFFFFFF, 0x12), OnGreen = B(0x3FD07F);
         static readonly FontFamily Ui = new FontFamily("Segoe UI Variable Text, Segoe UI");
         static readonly FontFamily Mono = new FontFamily("Cascadia Mono, Consolas");
 
@@ -92,7 +93,7 @@ namespace ClaudeNotch
         readonly TextBlock _moon = new TextBlock { Text = "☾", FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0), Visibility = Visibility.Collapsed };
         readonly Grid _peek = new Grid { Width = PEEK_W, Height = PEEK_H, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top, Opacity = 0 };
         readonly ScrollViewer _scroll = new ScrollViewer { Width = EXP_W - 2 * EXP_PAD, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top,
-                                                           Margin = new Thickness(0, EXP_PAD, 0, EXP_PAD), VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                                                           Margin = new Thickness(0, TOP_PAD, 0, EXP_PAD), VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                                                            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Opacity = 0, Visibility = Visibility.Collapsed };
         readonly StackPanel _content = new StackPanel();
         readonly Rectangle _glow = new Rectangle { Height = 2, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Opacity = 0 };
@@ -109,7 +110,7 @@ namespace ClaudeNotch
         IntPtr _hwnd;
         double _scale = 1, _glowForWidth = -1, _colW = -1;
         bool _glowOn;
-        bool _menuOpen, _activatable, _clickThrough, _hiddenFullScreen;
+        bool _settingsOpen, _activatable, _clickThrough, _hiddenFullScreen;
         DateTime? _hoverSince, _leaveSince;
         DateTime _expandedAt = DateTime.MinValue, _layoutAt = DateTime.MinValue, _peekUntil = DateTime.MinValue, _lastFlash = DateTime.MinValue;
         string _rowSig = "", _panelSig = "";
@@ -118,6 +119,8 @@ namespace ClaudeNotch
         Pending _peekPending;                      // demande annoncee par l'entrouverture (ou null)
         // Appels : sourdine automatique tant qu'une appli d'appel utilise le micro.
         bool _inCall, _autoDnd, _autoSuppressed;
+        // Commandes retirees a la main (croix) alors qu'elles tournent encore.
+        readonly HashSet<string> _dismissed = new HashSet<string>();
         DateTime _callStart;
         DateTime? _micOffSince;
 
@@ -173,11 +176,20 @@ namespace ClaudeNotch
             _glow.RenderTransform = _glowX;
             _inner.Children.Add(_glow);
 
+            // Bouton de reglages : trois traits en haut a droite, visible encoche depliee.
+            var lines = new StackPanel { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
+            for (int i = 0; i < 3; i++) lines.Children.Add(new Rectangle { Width = 12, Height = 1.5, Fill = Muted, Margin = new Thickness(0, 1.5, 0, 1.5), RadiusX = 0.75, RadiusY = 0.75 });
+            _menuBtn = new Border { Width = 26, Height = 18, CornerRadius = new CornerRadius(5), Background = Brushes.Transparent, Child = lines,
+                                    HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 3, 9, 0),
+                                    ToolTip = "Réglages", Opacity = 0, Visibility = Visibility.Collapsed };
+            Clickable(_menuBtn, ToggleSettings, () => true);
+            _inner.Children.Add(_menuBtn);
+
             _shape.Child = _inner;
             _shape.Width = LINE_W;
             _shape.Height = LINE_H;
             _shape.SizeChanged += (s, e) => OnShapeSized(e.NewSize);
-            _shape.ContextMenu = BuildMenu();
+            _shape.MouseRightButtonUp += (s, e) => { if (_form == Form.Expanded) { e.Handled = true; ToggleSettings(); } };
             // Encoche vide : un clic n'importe ou (hors boutons et Bip) ouvre Claude.
             _shape.MouseLeftButtonUp += (s, e) => { if (!e.Handled && _form == Form.Expanded && _views.Count == 0) Native.FocusClaude(); };
 
@@ -204,7 +216,7 @@ namespace ClaudeNotch
                 Program.Log).Start();
 
             Every(500, Refresh);
-            Every(50, Track);
+            _track = Every(100, Track);   // 50 ms deplie ou entrouvert (voir GoTo)
             Every(1000, () => { foreach (var t in _tickers) t(); KeepOnTop(); CheckFullScreen(); Escalate(); FitWindow(); });
             Every(2000, CheckCall);
 
@@ -225,11 +237,14 @@ namespace ClaudeNotch
             return p;
         }
 
-        void Every(int ms, Action a)
+        DispatcherTimer _track;
+
+        DispatcherTimer Every(int ms, Action a)
         {
             var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(ms) };
             t.Tick += (s, e) => { try { a(); } catch (Exception ex) { Program.Log(ex.ToString()); } };
             t.Start();
+            return t;
         }
 
         void OnSourceInitialized(object sender, EventArgs e)
@@ -280,7 +295,7 @@ namespace ClaudeNotch
             if (fs) Hide(); else { Show(); KeepOnTop(); }
         }
 
-        // ------------------------------------------------------------ survol (souris suivie toutes les 30 ms)
+        // ------------------------------------------------------------ survol (souris suivie toutes les 50 a 100 ms)
 
         // Le bloc est traverse par les clics quand il est replie : WPF ne voit donc pas
         // la souris. On compare la position du curseur au rectangle du bloc.
@@ -308,84 +323,9 @@ namespace ClaudeNotch
             }
 
             bool typing = IsActive && Keyboard.FocusedElement is TextBox;
-            if (inside || _menuOpen || typing) { _leaveSince = null; return; }
+            if (inside || typing) { _leaveSince = null; return; }
             if (_leaveSince == null) _leaveSince = now;
             else if (now - _leaveSince.Value >= LEAVE_CLOSE) { _leaveSince = null; GoTo(RestForm()); }
-        }
-
-        // ------------------------------------------------------------ menu (clic droit, encoche depliee)
-
-        ContextMenu BuildMenu()
-        {
-            var m = new ContextMenu();
-            m.Items.Add(new MenuItem { Header = "Bip v" + AppVersion.Text, IsEnabled = false });
-            m.Items.Add(new Separator());
-            var dnd = new MenuItem { Header = "Ne pas déranger pendant 1 h", IsCheckable = true };
-            dnd.Click += (s, e) => ToggleDnd();
-            m.Items.Add(dnd);
-            var flash = new MenuItem { Header = "Faire clignoter la fenêtre Claude (attente > 5 min)", IsCheckable = true };
-            flash.Click += (s, e) => { _cfg.Flash = flash.IsChecked; _cfg.Save(); };
-            m.Items.Add(flash);
-
-            m.Items.Add(new Separator());
-            var auto = new MenuItem { Header = "Sourdine automatique pendant les appels", IsCheckable = true };
-            auto.Click += (s, e) =>
-            {
-                _cfg.AutoDnd = auto.IsChecked;
-                _cfg.Save();
-                if (!_cfg.AutoDnd && _autoDnd) { _autoDnd = false; QuietChanged(); }
-            };
-            m.Items.Add(auto);
-
-            m.Items.Add(new Separator());
-            var report = new MenuItem { Header = "Journal d'audit…" };
-            report.Click += (s, e) => { int days = _cfg.AuditDays; System.Threading.Tasks.Task.Run(() => Report.Open(days)); };
-            m.Items.Add(report);
-            var rules = new MenuItem { Header = "Règles créées par Bip" };
-            m.Items.Add(rules);
-
-            m.Items.Add(new Separator());
-            var open = new MenuItem { Header = "Ouvrir le dossier d'état" };
-            open.Click += (s, e) => { try { System.Diagnostics.Process.Start("explorer.exe", Program.StateDir); } catch { } };
-            m.Items.Add(open);
-            var purge = new MenuItem { Header = "Purger les états" };
-            purge.Click += (s, e) =>
-            {
-                try { foreach (var f in Directory.GetFiles(Program.StateDir, "*.state")) File.Delete(f); } catch { }
-                Refresh();
-            };
-            m.Items.Add(purge);
-
-            m.Items.Add(new Separator());
-            var quit = new MenuItem { Header = "Quitter ClaudeNotch" };
-            quit.Click += (s, e) =>
-            {
-                // Les demandes en attente repartent vers Claude.
-                foreach (var p in _pending.ToList()) ThreadPool.QueueUserWorkItem(_ => p.Reply(""));
-                Application.Current.Shutdown();
-            };
-            m.Items.Add(quit);
-
-            m.Opened += (s, e) =>
-            {
-                _menuOpen = true;
-                flash.IsChecked = _cfg.Flash;
-                dnd.IsChecked = Quiet;
-                auto.IsChecked = _cfg.AutoDnd;
-                // Regles creees par Bip : un clic en retire une.
-                rules.Items.Clear();
-                var list = Rules.Created();
-                if (list.Count == 0) rules.Items.Add(new MenuItem { Header = "Aucune règle pour l'instant", IsEnabled = false });
-                foreach (var c in list)
-                {
-                    var rule = c;
-                    var it = new MenuItem { Header = "Retirer  " + rule.Rule + "  ·  " + (rule.Scope == "partout" ? "partout" : Session.NameOf(rule.Dir)) + "  ·  " + rule.T.ToString("dd/MM") };
-                    it.Click += (s2, e2) => { try { Rules.Remove(rule); } catch (Exception ex) { Program.Log("regle : " + ex.Message); } };
-                    rules.Items.Add(it);
-                }
-            };
-            m.Closed += (s, e) => _menuOpen = false;
-            return m;
         }
 
         // ------------------------------------------------------------ donnees
@@ -397,8 +337,10 @@ namespace ClaudeNotch
             _pending.RemoveAll(p => p.Done);
 
             var views = new List<View>();
+            _dismissed.RemoveWhere(id => !_sessions.Any(x => x.Id == id));
             foreach (var s in _sessions)
             {
+                if (_dismissed.Contains(s.Id)) continue;
                 var v = new View { S = s, State = s.State, Since = s.Since };
                 v.Pending = _pending.Where(p => p.SessionId == s.Id).OrderBy(p => p.Since).ToList();
                 if (v.Pending.Count > 0) { v.State = St.Waiting; v.Since = v.Pending[0].Since; }
@@ -458,7 +400,7 @@ namespace ClaudeNotch
                     if (finished && ((had && prev == St.Busy) || (!had && s.Since >= _startedAt)))
                     {
                         Journal.Add(s.State == St.Ready ? "commande-ok" : "commande-ko", s.Id, s.Label ?? s.Name);
-                        if (s.RunTime >= TimeSpan.FromSeconds(30)) PeekRun(s);
+                        if (s.RunTime >= TimeSpan.FromSeconds(30) && !_dismissed.Contains(s.Id)) PeekRun(s);
                     }
                     _prev[s.Id] = s.State;
                     continue;
@@ -541,6 +483,7 @@ namespace ClaudeNotch
                 if (b != null) { _bips.Children.Remove(b); _rowBips.Remove(v.S.Id); _leaving.Remove(v.S.Id); }
 
                 b = MakeBip(v, COL_BIP);
+                b.Fps = 8;   // 16 px : 8 images/s suffisent, moitie moins de rendu
                 b.Margin = new Thickness(COL_GAP / 2, 0, COL_GAP / 2, 0);
                 b.Tag = v.S.Id;
                 // Arrivee : petit grossissement depuis le centre.
@@ -593,6 +536,9 @@ namespace ClaudeNotch
             int token = ++_anim;
 
             SetClickThrough(f != Form.Expanded);
+            // Souris suivie toutes les 50 ms quand l'encoche est ouverte (depart rapide),
+            // 100 ms repliee : l'ouverture attend de toute facon 200 ms de survol.
+            if (_track != null) _track.Interval = TimeSpan.FromMilliseconds(f == Form.Expanded || f == Form.Peek ? 50 : 100);
             if (f != Form.Expanded && _activatable) SetActivatable(false);
             _shadow.BeginAnimation(DropShadowEffect.OpacityProperty,
                 new DoubleAnimation(f == Form.Expanded || f == Form.Peek ? 0.4 : 0, TimeSpan.FromMilliseconds(250)));
@@ -601,6 +547,9 @@ namespace ClaudeNotch
             if (f == Form.Expanded)
             {
                 _expandedAt = DateTime.Now;
+                _settingsOpen = false;
+                _menuBtn.Visibility = Visibility.Visible;
+                FadeTo(_menuBtn, 1, 180, 250);
                 FadeTo(_row, 0, 100, 0);
                 FadeTo(_peek, 0, 100, 0);
                 _scroll.Visibility = Visibility.Visible;
@@ -624,6 +573,9 @@ namespace ClaudeNotch
             bool closing = from == Form.Expanded || from == Form.Peek;
             if (from == Form.Expanded)
             {
+                _menuBtn.BeginAnimation(OpacityProperty, null);
+                _menuBtn.Opacity = 0;
+                _menuBtn.Visibility = Visibility.Collapsed;
                 var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(100));
                 fade.Completed += (s, e) => { if (token == _anim) _scroll.Visibility = Visibility.Collapsed; };
                 _scroll.BeginAnimation(OpacityProperty, fade);
@@ -724,8 +676,8 @@ namespace ClaudeNotch
         {
             _content.Measure(new Size(EXP_W - 2 * EXP_PAD, double.PositiveInfinity));
             double max = SystemParameters.PrimaryScreenHeight * 0.85;
-            _scroll.MaxHeight = max - 2 * EXP_PAD;
-            return Math.Min(_content.DesiredSize.Height + 2 * EXP_PAD, max);
+            _scroll.MaxHeight = max - TOP_PAD - EXP_PAD;
+            return Math.Min(_content.DesiredSize.Height + TOP_PAD + EXP_PAD, max);
         }
 
         // ------------------------------------------------------------ eclat d'attente
@@ -1020,7 +972,8 @@ namespace ClaudeNotch
         void RenderPanel(bool opening)
         {
             string sig = string.Join(";", _views.Select(v => v.S.Id + ":" + v.State + ":" + v.S.Name + ":" + v.Pending.Count))
-                       + "|" + string.Join(",", _pending.Select(p => p.GetHashCode()));
+                       + "|" + string.Join(",", _pending.Select(p => p.GetHashCode()))
+                       + "|" + (_settingsOpen ? Quiet + ":" + _cfg.AutoDnd + ":" + _cfg.Flash + ":" + Rules.Created().Count : "");
             if (sig == _panelSig && !opening) return;
             // Pendant une saisie, on ne reconstruit rien : le focus serait perdu.
             if (!opening && IsActive && Keyboard.FocusedElement is TextBox) return;
@@ -1045,6 +998,11 @@ namespace ClaudeNotch
             for (int i = 0; i < rows.Count; i++) _content.Children.Add(Row(rows[i], i > 0));
             if (_views.Count == 0)
                 _content.Children.Add(EmptyPanel());
+            if (_settingsOpen)
+            {
+                _content.Children.Add(new Rectangle { Height = 1, Fill = Btn2, Margin = new Thickness(0, 10, 0, 8) });
+                _content.Children.Add(_settingsEl = Settings());
+            }
 
             foreach (var t in _tickers) t();
             _panelSig = sig;
@@ -1071,6 +1029,155 @@ namespace ClaudeNotch
                 foreach (FrameworkElement el in _content.Children) { el.BeginAnimation(OpacityProperty, null); el.Opacity = 1; el.RenderTransform = null; }
                 Resize(EXP_W, ExpandedHeight(), 220);
             }
+        }
+
+        // ------------------------------------------------------------ reglages (bouton en haut a droite)
+
+        readonly Border _menuBtn;
+        FrameworkElement _settingsEl;
+
+        void ToggleSettings()
+        {
+            _settingsOpen = !_settingsOpen;
+            _panelSig = null;
+            RenderPanel(false);
+            if (_settingsOpen && _settingsEl != null)
+                Dispatcher.BeginInvoke((Action)(() => _settingsEl.BringIntoView()), DispatcherPriority.Loaded);
+        }
+
+        bool SettingsArmed() { return DateTime.Now - _expandedAt > ARM_DELAY && DateTime.Now - _layoutAt > ARM_DELAY; }
+
+        // Un changement de reglage : on redessine le panneau pour refleter le nouvel etat.
+        void Redraw() { _panelSig = null; RenderPanel(false); }
+
+        // Clic complet (appui puis relache sur l'element), survol eclairci.
+        static void Clickable(Border b, Action click, Func<bool> armed)
+        {
+            b.Cursor = Cursors.Hand;
+            bool down = false;
+            var normal = b.Background;
+            b.MouseEnter += (s, e) => b.Background = Hover;
+            b.MouseLeave += (s, e) => { down = false; b.Background = normal; };
+            b.MouseLeftButtonDown += (s, e) => { down = true; e.Handled = true; };
+            b.MouseLeftButtonUp += (s, e) =>
+            {
+                e.Handled = true;
+                if (!down) return;
+                down = false;
+                if (armed()) click();
+            };
+        }
+
+        // Reglages integres a l'encoche, sous le contenu, separes par un trait.
+        FrameworkElement Settings()
+        {
+            var p = new StackPanel { Background = Brushes.Transparent, Cursor = Cursors.Arrow };
+            p.MouseLeftButtonUp += (s, e) => e.Handled = true;   // encoche vide : pas d'ouverture de Claude ici
+
+            p.Children.Add(Toggle(DndLabel(), "1 h sans entrouverture, éclat ni clignotement", Quiet, () => ToggleDnd()));
+            p.Children.Add(Toggle("Sourdine automatique pendant les appels", "Teams, Zoom, Meet… repérés à l'usage du micro", _cfg.AutoDnd, () =>
+            {
+                _cfg.AutoDnd = !_cfg.AutoDnd;
+                _cfg.Save();
+                if (!_cfg.AutoDnd && _autoDnd) { _autoDnd = false; QuietChanged(); }
+            }));
+            p.Children.Add(Toggle("Faire clignoter Claude", "quand une demande attend depuis 5 min", _cfg.Flash, () => { _cfg.Flash = !_cfg.Flash; _cfg.Save(); }));
+
+            p.Children.Add(Section("Traçabilité"));
+            p.Children.Add(Link("Journal d'audit", "ce que les agents ont fait, et qui l'a autorisé", "↗", () =>
+            {
+                int days = _cfg.AuditDays;
+                System.Threading.Tasks.Task.Run(() => Report.Open(days));
+            }));
+
+            var rules = Rules.Created();
+            p.Children.Add(Section("Règles créées par Bip"));
+            if (rules.Count == 0)
+                p.Children.Add(new TextBlock { Text = "Aucune pour l'instant. Bip en propose après 5 autorisations de la même commande.", FontSize = 12, Foreground = Muted,
+                                               TextWrapping = TextWrapping.Wrap, Margin = new Thickness(8, 0, 8, 4) });
+            foreach (var c in rules)
+            {
+                var rule = c;
+                p.Children.Add(Link(rule.Rule, (rule.Scope == "partout" ? "partout" : Session.NameOf(rule.Dir)) + " · " + rule.T.ToString("dd/MM"), "✕", () =>
+                {
+                    try { Rules.Remove(rule); } catch (Exception ex) { Program.Log("regle : " + ex.Message); }
+                    Redraw();
+                }, true));
+            }
+
+            // Pied : version a gauche, actions secondaires a droite.
+            var foot = new DockPanel { Margin = new Thickness(0, 10, 0, 0), LastChildFill = false };
+            foot.Children.Add(new TextBlock { Text = "Bip v" + AppVersion.Text, FontSize = 11.5, Foreground = Muted, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) });
+            var actions = new StackPanel { Orientation = Orientation.Horizontal };
+            DockPanel.SetDock(actions, Dock.Right);
+            actions.Children.Add(Small("Dossier d'état", () => { try { System.Diagnostics.Process.Start("explorer.exe", Program.StateDir); } catch { } }));
+            actions.Children.Add(Small("Purger les états", () =>
+            {
+                try { foreach (var f in Directory.GetFiles(Program.StateDir, "*.state")) File.Delete(f); } catch { }
+                Refresh();
+            }));
+            actions.Children.Add(Small("Quitter Bip", () =>
+            {
+                // Les demandes en attente repartent vers Claude.
+                foreach (var q in _pending.ToList()) ThreadPool.QueueUserWorkItem(_ => q.Reply(""));
+                Application.Current.Shutdown();
+            }));
+            foot.Children.Add(actions);
+            p.Children.Add(foot);
+            return p;
+        }
+
+        static TextBlock Section(string title)
+        {
+            return new TextBlock { Text = title, FontSize = 11.5, Foreground = Muted, Margin = new Thickness(8, 10, 0, 2) };
+        }
+
+        // Ligne : intitule et precision a gauche, interrupteur a droite. Toute la ligne est cliquable.
+        FrameworkElement Toggle(string label, string hint, bool on, Action flip)
+        {
+            var g = new Grid();
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            text.Children.Add(new TextBlock { Text = label, FontSize = 12.5, Foreground = Ink });
+            if (hint != null) text.Children.Add(new TextBlock { Text = hint, FontSize = 11, Foreground = Muted });
+            g.Children.Add(text);
+            var knob = new Ellipse { Width = 13, Height = 13, Fill = Ink, HorizontalAlignment = on ? HorizontalAlignment.Right : HorizontalAlignment.Left, Margin = new Thickness(2, 0, 2, 0) };
+            var sw = new Border { Width = 30, Height = 17, CornerRadius = new CornerRadius(8.5), Background = on ? OnGreen : Always, Child = knob,
+                                  VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
+            Grid.SetColumn(sw, 1);
+            g.Children.Add(sw);
+            var row = new Border { Child = g, Padding = new Thickness(8, 6, 8, 6), CornerRadius = new CornerRadius(8), Background = Brushes.Transparent };
+            Clickable(row, () => { flip(); Redraw(); }, SettingsArmed);
+            return row;
+        }
+
+        // Ligne d'action : intitule, precision, et un signe a droite (↗ ouvrir, ✕ retirer).
+        FrameworkElement Link(string label, string hint, string sign, Action click, bool mono = false)
+        {
+            var g = new Grid();
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            var t = new TextBlock { Text = label, FontSize = 12.5, Foreground = mono ? Code : Ink, TextTrimming = TextTrimming.CharacterEllipsis };
+            if (mono) t.FontFamily = Mono;
+            text.Children.Add(t);
+            if (hint != null) text.Children.Add(new TextBlock { Text = hint, FontSize = 11, Foreground = Muted });
+            g.Children.Add(text);
+            var mark = new TextBlock { Text = sign, FontSize = 12, Foreground = Muted, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 2, 0) };
+            Grid.SetColumn(mark, 1);
+            g.Children.Add(mark);
+            var row = new Border { Child = g, Padding = new Thickness(8, 6, 8, 6), CornerRadius = new CornerRadius(8), Background = Brushes.Transparent };
+            Clickable(row, click, SettingsArmed);
+            return row;
+        }
+
+        FrameworkElement Small(string label, Action click)
+        {
+            var b = new Border { Padding = new Thickness(8, 3, 8, 3), CornerRadius = new CornerRadius(6), Background = Brushes.Transparent, Margin = new Thickness(2, 0, 0, 0),
+                                 Child = new TextBlock { Text = label, FontSize = 11.5, Foreground = Muted } };
+            Clickable(b, click, SettingsArmed);
+            return b;
         }
 
         // ------------------------------------------------------------ encoche vide
@@ -1267,6 +1374,26 @@ namespace ClaudeNotch
             Grid.SetColumn(info, 2);
             g.Children.Add(info);
             _tickers.Add(() => info.Text = InfoOf(v));
+
+            if (v.S.IsRun)
+            {
+                // Croix : retire la commande de l'encoche. Finie, son fichier est supprime ;
+                // en cours, elle est seulement masquee (elle continue de tourner).
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                var x = new TextBlock { Text = "✕", FontSize = 12, Foreground = Muted, Cursor = Cursors.Hand, ToolTip = "Retirer de l'encoche",
+                                        VerticalAlignment = VerticalAlignment.Center, Padding = new Thickness(8, 4, 6, 4), Background = Brushes.Transparent };
+                x.MouseEnter += (s, e) => x.Foreground = Code;
+                x.MouseLeave += (s, e) => x.Foreground = Muted;
+                x.MouseLeftButtonUp += (s, e) =>
+                {
+                    e.Handled = true;
+                    if (v.State == St.Busy) _dismissed.Add(v.S.Id);
+                    else try { File.Delete(System.IO.Path.Combine(Program.StateDir, v.S.Id + ".state")); } catch { }
+                    Refresh();
+                };
+                Grid.SetColumn(x, 3);
+                g.Children.Add(x);
+            }
 
             // Pas de clic pour ouvrir Claude ici : quand des sessions tournent, un clic
             // a cote d'un bouton de carte ne doit rien declencher. (Encoche vide seulement.)

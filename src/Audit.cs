@@ -178,9 +178,11 @@ namespace ClaudeNotch
             catch { return new List<string>(); }
         }
 
+        // Fournisseur de Windows (CAPI) : ~5 ms au premier appel contre ~23 pour SHA256.Create(),
+        // qui passe par CryptoConfig. Compatible avec le mode FIPS.
         public static string Sha(string line)
         {
-            using (var h = SHA256.Create())
+            using (var h = new SHA256CryptoServiceProvider())
                 return string.Concat(h.ComputeHash(Encoding.UTF8.GetBytes(line)).Select(b => b.ToString("x2")));
         }
 
@@ -251,8 +253,9 @@ namespace ClaudeNotch
         static readonly Dictionary<string, Tuple<long, List<Dictionary<string, object>>>> _cache =
             new Dictionary<string, Tuple<long, List<Dictionary<string, object>>>>();
 
-        // Lignes brutes des N derniers jours. Les 31 derniers jours restent en cache (fichiers
-        // inchanges non relus) ; au-dela (rapport sur 90 jours), lus a la demande.
+        // Lignes brutes des N derniers jours. Le cache garde, par fichier, les lignes deja lues
+        // et la position atteinte : un fichier qui grandit (celui du jour) n'est lu qu'a partir
+        // de la. Les 31 derniers jours restent en cache ; au-dela (rapport sur 90 jours), lus a la demande.
         static List<Dictionary<string, object>> Lines(string root, int days)
         {
             var limit = DateTime.Today.AddDays(-days + 1).ToString("yyyy-MM-dd");
@@ -265,16 +268,15 @@ namespace ClaudeNotch
                 long len;
                 try { len = new FileInfo(f).Length; } catch { continue; }
                 Tuple<long, List<Dictionary<string, object>>> c;
-                lock (_cache)
-                    if (!_cache.TryGetValue(f, out c) || c.Item1 != len) c = null;
-                if (c == null)
+                lock (_cache) _cache.TryGetValue(f, out c);
+                if (c == null || c.Item1 != len)
                 {
-                    var list = new List<Dictionary<string, object>>();
-                    foreach (var l in ReadAllLines(f))
-                    {
-                        try { var d = Json.Obj(Json.Parse(l)); if (d != null) list.Add(d); } catch { }
-                    }
-                    c = Tuple.Create(len, list);
+                    long off = c == null ? 0 : c.Item1;
+                    var added = ReadFrom(f, ref off);
+                    if (added == null) { c = null; off = 0; added = ReadFrom(f, ref off) ?? new List<Dictionary<string, object>>(); }   // fichier raccourci : relu en entier
+                    var list = added;
+                    if (c != null) { list = new List<Dictionary<string, object>>(c.Item2.Count + added.Count); list.AddRange(c.Item2); list.AddRange(added); }
+                    c = Tuple.Create(off, list);
                     lock (_cache)
                     {
                         foreach (var old in _cache.Keys.Where(k => string.CompareOrdinal(Path.GetFileNameWithoutExtension(k), keep) < 0).ToList())
@@ -285,6 +287,36 @@ namespace ClaudeNotch
                 all.AddRange(c.Item2);
             }
             return all;
+        }
+
+        // Lignes completes a partir de l'octet offset, qui avance jusqu'apres le dernier saut
+        // de ligne (une ligne en cours d'ecriture sera lue la fois suivante). Null si le
+        // fichier est plus court que offset.
+        static List<Dictionary<string, object>> ReadFrom(string path, ref long offset)
+        {
+            var list = new List<Dictionary<string, object>>();
+            try
+            {
+                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                {
+                    if (fs.Length < offset) return null;
+                    fs.Seek(offset, SeekOrigin.Begin);
+                    var buf = new byte[fs.Length - offset];
+                    int got = 0;
+                    while (got < buf.Length) { int n = fs.Read(buf, got, buf.Length - got); if (n <= 0) break; got += n; }
+                    int end = got == 0 ? -1 : Array.LastIndexOf(buf, (byte)'\n', got - 1);
+                    if (end < 0) return list;
+                    foreach (var raw in new UTF8Encoding(false).GetString(buf, 0, end + 1).Split('\n'))
+                    {
+                        var l = raw.TrimEnd('\r');
+                        if (l.Length == 0) continue;
+                        try { var d = Json.Obj(Json.Parse(l)); if (d != null) list.Add(d); } catch { }
+                    }
+                    offset += end + 1;
+                }
+            }
+            catch (IOException) { }
+            return list;
         }
 
         static List<string> ReadAllLines(string path)

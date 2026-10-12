@@ -344,24 +344,33 @@ namespace ClaudeNotch
             catch { return true; }
         }
 
-        // Enumerer les processus coute ~10 ms : cache de 3 s.
-        static HashSet<int> _livePids;
-        static DateTime _pidsAt = DateTime.MinValue;
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+        static extern IntPtr OpenProcess(int access, bool inherit, int pid);
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        static extern bool GetExitCodeProcess(IntPtr h, out int code);
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        static extern bool QueryFullProcessImageName(IntPtr h, int flags, StringBuilder name, ref int size);
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        static extern bool CloseHandle(IntPtr h);
 
+        // Interroge directement le processus (quelques microsecondes) au lieu d'enumerer
+        // tous ceux du poste (~9 ms). Vivant = existe, pas termine, et s'appelle claude.exe
+        // (un pid reutilise par un autre programme ne compte pas). Dans le doute : vivant.
         static bool ClaudeAlive(int pid)
         {
-            if (_livePids == null || DateTime.Now - _pidsAt > TimeSpan.FromSeconds(3))
+            const int QUERY_LIMITED = 0x1000, STILL_ACTIVE = 259, ERROR_INVALID_PARAMETER = 87;
+            var h = OpenProcess(QUERY_LIMITED, false, pid);
+            if (h == IntPtr.Zero) return System.Runtime.InteropServices.Marshal.GetLastWin32Error() != ERROR_INVALID_PARAMETER;
+            try
             {
-                var set = new HashSet<int>();
-                try
-                {
-                    foreach (var p in Process.GetProcessesByName("claude")) { set.Add(p.Id); p.Dispose(); }
-                }
-                catch { return true; }   // enumeration impossible : on ne declare personne mort a tort
-                _livePids = set;
-                _pidsAt = DateTime.Now;
+                int code;
+                if (GetExitCodeProcess(h, out code) && code != STILL_ACTIVE) return false;
+                var sb = new StringBuilder(1024);
+                int size = sb.Capacity;
+                if (!QueryFullProcessImageName(h, 0, sb, ref size)) return true;
+                return string.Equals(Path.GetFileNameWithoutExtension(sb.ToString()), "claude", StringComparison.OrdinalIgnoreCase);
             }
-            return _livePids.Contains(pid);
+            finally { CloseHandle(h); }
         }
     }
 

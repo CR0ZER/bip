@@ -41,7 +41,6 @@ session Claude Code y est représentée par **Bip**, la mascotte (kit complet da
 - **Questions** : choix unique, choix multiple, « Autre… » pour taper sa propre
   réponse (seul moment où l'encoche prend le clavier).
 - **Répondre dans Claude** : rend la main ; Claude affiche sa demande habituelle.
-- **Clic** sur une ligne de session : met Claude au premier plan.
 - **Encoche vide survolée** : Bip se réveille et salue ; un clic sur lui le fait
   réagir (saut, clignement, signe). Dessous : les 3 dernières sessions terminées
   et le bilan du jour (sessions, temps de travail, réponses données depuis

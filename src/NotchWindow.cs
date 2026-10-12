@@ -954,11 +954,9 @@ namespace ClaudeNotch
             g.Children.Add(info);
             _tickers.Add(() => info.Text = InfoOf(v));
 
-            var border = new Border { Child = g, CornerRadius = new CornerRadius(8), Cursor = Cursors.Hand };
-            border.MouseEnter += (s, e) => border.Background = Hover;
-            border.MouseLeave += (s, e) => border.Background = Brushes.Transparent;
-            border.MouseLeftButtonUp += (s, e) => Native.FocusClaude();
-            border.ToolTip = "Ouvrir Claude";
+            // Pas de clic pour ouvrir Claude ici : quand des sessions tournent, un clic
+            // a cote d'un bouton de carte ne doit rien declencher. (Encoche vide seulement.)
+            var border = new Border { Child = g, CornerRadius = new CornerRadius(8) };
             var wrap = new StackPanel();
             if (separator) wrap.Children.Add(new Rectangle { Height = 1, Fill = Sep });
             wrap.Children.Add(border);

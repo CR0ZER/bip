@@ -13,6 +13,8 @@ qui a fini et qui t'attend, et tu réponds sans changer de fenêtre.
 ![Sans SDK](https://img.shields.io/badge/compil%C3%A9%20avec-csc%20de%20Windows-555)
 ![Licence MIT](https://img.shields.io/badge/licence-MIT-2EA44F)
 
+**🇫🇷 Français** · [🇬🇧 English](#english)
+
 <img src="docs/screenshots/permission.png" width="640" alt="Encoche dépliée : une demande de permission et deux sessions">
 
 </div>
@@ -164,5 +166,165 @@ montrerait ; `notch.log` recueille les erreurs ; `journal\` garde 7 jours de bil
   d'Anthropic.
 
 ## Licence
+
+[MIT](LICENSE) © 2026 CR0ZER
+
+<br>
+
+---
+
+<br>
+
+## English
+
+[🇫🇷 Version française ↑](#bip) · **🇬🇧 English**
+
+**The Claude Code notch for Windows.** One little robot per session, docked at the top of your
+screen: see at a glance who is working, who is done and who is waiting for you, and answer
+without switching windows. *The interface is in French.*
+
+### Why
+
+Claude Code works on its own for long minutes, often in several sessions at once. Starting it
+is easy; the hard part is **knowing when it needs you**: a command to approve, a question to
+answer. Until someone replies, the session is stuck.
+
+Bip lives in a black notch at the top centre of the screen, *Dynamic Island* style. Collapsed,
+it stays out of the way and lets clicks through; hover it and it unfolds so you can answer
+right there.
+
+### Preview
+
+| Collapsed | A request comes in |
+|:---:|:---:|
+| <img src="docs/screenshots/repliee.png" width="400" alt="Collapsed notch, three sessions"> | <img src="docs/screenshots/entrouverte.png" width="400" alt="Peeking notch: data-pipeline is waiting for you"> |
+| One Bip per session, in launch order (5 at most, then "+N"). | The notch peeks open for 4 s to say who is waiting, then folds back; a red glow sweeps its edge while the request is open. |
+
+| Answering a question | Empty notch |
+|:---:|:---:|
+| <img src="docs/screenshots/question.png" width="400" alt="Multiple-choice question card"> | <img src="docs/screenshots/encoche-vide.png" width="400" alt="Bip says hello, recent sessions and today's summary"> |
+| Single choice, multiple choice or free text ("Autre…"). | Nothing running: Bip wakes up, says hello, and shows recent sessions and today's summary. |
+
+### Meet Bip
+
+<img src="design/bip-mascotte/apercu-planche.png" alt="Bip's five states at 128, 40, 20 and 16 px">
+
+| State | When | What it does |
+|---|---|---|
+| **Waiting** (red) | A permission or a question needs your answer | Raises its arm, breathes faster and faster, trembles now and then |
+| **Running** (orange) | Claude is thinking, reading, executing | Floats gently |
+| **Ready** (green) | Claude is done and hands back control | Does a little hop, then fades out after 4 min |
+| **Error** (grey, "!") | The turn stopped on an API error | Slumps |
+| **Idle** (dark grey) | Session open, nothing asked yet | Sleeps, antenna folded |
+
+Every state also reads without colour (arm, badge, antenna), even at 16 px.
+The full kit (SVG, PNG, reference values, animated preview) is in [`design/bip-mascotte`](design/bip-mascotte).
+
+### Features
+
+- **Live tracking** of every Claude Code session on the machine (desktop app, terminal, IDE).
+- **Permissions from the notch**: Allow, Deny, or "Always" with its scope written on the button
+  ("Always: all file edits", "Always: Edit(src/\*\*)"…), limited to the session. Never "Always"
+  for shell commands.
+- **Questions (AskUserQuestion)**: single choice, multiple choice, several questions, free text.
+- **Answer in Claude** at any time: the request goes back to the usual Claude window.
+- **Empty notch**: Bip says hello (and reacts when you click it), recent finished sessions,
+  today's summary (sessions, working time, answers). Clicking anywhere else opens Claude.
+- **Do not disturb** for 1 h: no peeking, no glow, no flashing.
+- **Gentle escalation**: after 5 min of waiting, the Claude window flashes in the taskbar
+  (can be turned off). Never forced to the foreground, no sound at all.
+- **Out of the way when needed**: hidden while a full-screen app is running.
+
+### Installation
+
+Requirements: Windows 10 or 11 (.NET Framework 4.x is already there) and Claude Code.
+Answering questions from the notch needs Claude Code 2.1.85 or later.
+
+```bat
+git clone https://github.com/CR0ZER/bip.git
+cd bip
+installer.cmd
+```
+
+`installer.cmd` builds both executables if needed, adds Bip's hooks to `~/.claude/settings.json`
+(a dated backup is saved next to it), adds the notch to Windows startup and launches it. It is
+safe to run again.
+
+To remove everything: `desinstaller.cmd`, then delete the folder. Only Bip's entries are removed
+from `settings.json`; your other hooks are left untouched.
+
+> New Claude sessions pick up the hooks immediately; an already open session may need a restart.
+
+### How it works
+
+```mermaid
+flowchart LR
+    CC["Claude Code<br/>(each session)"] -- "async hooks<br/>session state" --> H1["NotchHook.exe state"]
+    H1 --> ST[("state/<br/>one file per session")]
+    ST --> N["ClaudeNotch.exe<br/>the notch"]
+    CC -- "blocking hook<br/>PermissionRequest / AskUserQuestion" --> H2["NotchHook.exe permission | ask"]
+    H2 <-- "named pipe<br/>restricted to your account" --> N
+    H2 -- "JSON decision" --> CC
+```
+
+- **Session state** goes through async hooks, so they never slow Claude down. `NotchHook.exe`
+  writes `state|folder|pid` into `state\`, and the notch reads those files.
+- **Answers** go through blocking hooks: the hook hands the request to the notch over a named
+  pipe, waits for your click, then returns the decision to Claude Code.
+- **Everything is built with the `csc.exe` that ships with Windows**, no SDK: `build.cmd` is enough.
+
+### Security
+
+- **Fail-safe**: notch closed, crashed or unreachable, timeout, unreadable request → the hook
+  returns nothing and Claude asks the question itself. **Never an implicit approval.**
+- **Restricted pipe**, open to the current Windows account only; before sending anything, the
+  hook checks that the server is the `ClaudeNotch.exe` installed next to it.
+- **Nothing is approved on hover**: a full click is required, and buttons only arm after 600 ms
+  (opening, new card or a list that moves).
+- **What you read is what runs**: the command is always shown in full (with its line count when
+  long), invisible or bidirectional characters (U+202E…) are made visible, and Claude's own
+  description is labelled as such ("Selon Claude : …").
+
+### Performance
+
+Measured on a work machine, over 20 s:
+
+| Situation | CPU | Memory |
+|---|---|---|
+| One session working (Bip animated) | ~4.7 % of one core | ~68 MB |
+| No animated Bip | ~0.7 % of one core | ~69 MB |
+| `NotchHook.exe`, per tool call | ~70 ms, in the background | — |
+
+Software rendering, looping animations at 15–30 fps, glow only while someone is waiting, window
+sized to the notch. Measurement details are in [`docs/CONCEPTION.md`](docs/CONCEPTION.md) (in French).
+
+### Layout
+
+```
+src/
+  App.cs          entry point, install / uninstall, Windows calls
+  NotchWindow.cs  the notch: shapes, transitions, cards, empty notch
+  Bip.cs          the mascot (C# port of the kit's WPF control)
+  Model.cs        sessions, daily log, pending requests, named pipe
+  NotchHook.cs    the hook called by Claude Code
+  Json.cs         JSON reading / writing
+design/bip-mascotte/   mascot kit (SVG, PNG, tokens.json, animated preview)
+docs/                  design journal and screenshots
+build.cmd · installer.cmd · desinstaller.cmd
+```
+
+**Troubleshooting**: `ClaudeNotch.exe --dump-plan` prints the sessions read and what the notch
+would show; `notch.log` collects errors; `journal\` keeps 7 days of summaries.
+
+### Credits
+
+- **Inspired by [coucou](https://github.com/Louis-CFM/coucou)** by Louis-CFM, the companion notch
+  for coding agents on macOS (MIT licence). Bip borrows the idea (a black block that morphs,
+  answering from the notch); the code, the mascot and the design are this project's own.
+- **Mascot and design** made with Claude Design; app built with Claude Code.
+- Independent project, not affiliated with Anthropic. "Claude" and "Claude Code" are trademarks
+  of Anthropic.
+
+### Licence
 
 [MIT](LICENSE) © 2026 CR0ZER

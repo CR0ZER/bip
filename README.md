@@ -12,6 +12,7 @@ qui a fini et qui t'attend, et tu réponds sans changer de fenêtre.
 ![.NET Framework 4.x](https://img.shields.io/badge/.NET%20Framework-4.x-512BD4)
 ![Sans SDK](https://img.shields.io/badge/compil%C3%A9%20avec-csc%20de%20Windows-555)
 ![Licence MIT](https://img.shields.io/badge/licence-MIT-2EA44F)
+[![Dernière version](https://img.shields.io/github/v/release/CR0ZER/bip?label=version)](https://github.com/CR0ZER/bip/releases/latest)
 
 **🇫🇷 Français** · [🇬🇧 English](#english)
 
@@ -77,6 +78,18 @@ Le kit complet (SVG, PNG, valeurs de référence, aperçu animé) est dans [`des
 
 Prérequis : Windows 10 ou 11 (le .NET Framework 4.x est déjà présent) et Claude Code.
 Répondre aux questions depuis l'encoche demande Claude Code 2.1.85 ou plus récent.
+
+**Télécharger** (le plus simple) : prends `Bip-vX.Y.Z.zip` dans la
+[dernière release](https://github.com/CR0ZER/bip/releases/latest), décompresse-le dans un dossier
+permanent (par exemple `Documents\Bip`, pas dans Téléchargements : les hooks pointent vers ce
+dossier), puis lance `installer.cmd`.
+
+> Les exécutables ne sont pas signés : au premier lancement, Windows SmartScreen peut afficher
+> « Windows a protégé votre ordinateur ». Clique sur *Informations complémentaires* →
+> *Exécuter quand même*. L'empreinte SHA-256 du zip est publiée avec chaque release, et tu
+> peux toujours compiler toi-même.
+
+**Depuis les sources** (compilé sur ton poste, sans rien installer) :
 
 ```bat
 git clone https://github.com/CR0ZER/bip.git
@@ -147,9 +160,11 @@ src/
   Model.cs        sessions, journal du jour, demandes en attente, pipe nommé
   NotchHook.cs    le hook appelé par Claude Code
   Json.cs         lecture / écriture JSON
+  Version.cs      numéro de version (vérifié par la release)
 design/bip-mascotte/   kit de la mascotte (SVG, PNG, tokens.json, aperçu animé)
 docs/                  journal de conception et captures
-build.cmd · installer.cmd · desinstaller.cmd
+.github/workflows/     release automatique à chaque tag vX.Y.Z
+build.cmd · installer.cmd · desinstaller.cmd · CHANGELOG.md
 ```
 
 **Diagnostic** : `ClaudeNotch.exe --dump-plan` affiche les sessions lues et ce que l'encoche
@@ -240,6 +255,17 @@ The full kit (SVG, PNG, reference values, animated preview) is in [`design/bip-m
 Requirements: Windows 10 or 11 (.NET Framework 4.x is already there) and Claude Code.
 Answering questions from the notch needs Claude Code 2.1.85 or later.
 
+**Download** (easiest): grab `Bip-vX.Y.Z.zip` from the
+[latest release](https://github.com/CR0ZER/bip/releases/latest), unzip it into a permanent
+folder (for instance `Documents\Bip`, not Downloads: the hooks point to that folder), then run
+`installer.cmd`.
+
+> The executables are not signed: on first launch, Windows SmartScreen may say "Windows protected
+> your PC". Click *More info* → *Run anyway*. Each release ships the zip's SHA-256 checksum, and
+> you can always build it yourself.
+
+**From source** (built on your machine, nothing to install):
+
 ```bat
 git clone https://github.com/CR0ZER/bip.git
 cd bip
@@ -308,9 +334,11 @@ src/
   Model.cs        sessions, daily log, pending requests, named pipe
   NotchHook.cs    the hook called by Claude Code
   Json.cs         JSON reading / writing
+  Version.cs      version number (checked by the release)
 design/bip-mascotte/   mascot kit (SVG, PNG, tokens.json, animated preview)
 docs/                  design journal and screenshots
-build.cmd · installer.cmd · desinstaller.cmd
+.github/workflows/     automatic release on every vX.Y.Z tag
+build.cmd · installer.cmd · desinstaller.cmd · CHANGELOG.md
 ```
 
 **Troubleshooting**: `ClaudeNotch.exe --dump-plan` prints the sessions read and what the notch

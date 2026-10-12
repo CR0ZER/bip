@@ -40,14 +40,15 @@ namespace ClaudeNotch
         {
             string cmd = args.Length > 0 ? args[0] : "";
 
-            if (cmd == "--install" || cmd == "--uninstall" || cmd == "--dump-plan")
+            if (cmd == "--install" || cmd == "--uninstall" || cmd == "--dump-plan" || cmd == "--version")
             {
                 try { AttachConsole(-1); } catch { }
                 try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
                 Console.WriteLine();
                 try
                 {
-                    if (cmd == "--install") Installer.Install();
+                    if (cmd == "--version") Console.WriteLine("Bip v" + AppVersion.Text);
+                    else if (cmd == "--install") Installer.Install();
                     else if (cmd == "--uninstall") Installer.Uninstall();
                     else DumpPlan();
                     return 0;

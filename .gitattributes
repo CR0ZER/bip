@@ -1,0 +1,2 @@
+# Scripts Windows : fins de ligne CRLF, quel que soit le poste qui clone
+*.cmd text eol=crlf

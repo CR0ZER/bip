@@ -303,6 +303,8 @@ namespace ClaudeNotch
         ContextMenu BuildMenu()
         {
             var m = new ContextMenu();
+            m.Items.Add(new MenuItem { Header = "Bip v" + AppVersion.Text, IsEnabled = false });
+            m.Items.Add(new Separator());
             var dnd = new MenuItem { Header = "Ne pas déranger pendant 1 h", IsCheckable = true };
             dnd.Click += (s, e) => ToggleDnd();
             m.Items.Add(dnd);

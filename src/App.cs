@@ -2,6 +2,8 @@
 // ClaudeNotch.exe --install       branche les hooks dans ~/.claude/settings.json + demarrage Windows
 // ClaudeNotch.exe --uninstall     les retire, et ferme l'encoche si elle tourne
 // ClaudeNotch.exe --dump-plan     affiche ce que l'encoche montrerait (diagnostic)
+// ClaudeNotch.exe --verify-audit  verifie la chaine d'empreintes du journal d'audit
+// ClaudeNotch.exe --audit-report  genere le rapport d'audit et l'ouvre
 
 using System;
 using System.Collections.Generic;
@@ -40,7 +42,8 @@ namespace ClaudeNotch
         {
             string cmd = args.Length > 0 ? args[0] : "";
 
-            if (cmd == "--install" || cmd == "--uninstall" || cmd == "--dump-plan" || cmd == "--version")
+            if (cmd == "--install" || cmd == "--uninstall" || cmd == "--dump-plan" || cmd == "--version"
+                || cmd == "--verify-audit" || cmd == "--audit-report")
             {
                 try { AttachConsole(-1); } catch { }
                 try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
@@ -48,6 +51,20 @@ namespace ClaudeNotch
                 try
                 {
                     if (cmd == "--version") Console.WriteLine("Bip v" + AppVersion.Text);
+                    else if (cmd == "--verify-audit")
+                    {
+                        int n;
+                        var broken = Audit.Verify(Root, out n);
+                        Console.WriteLine(broken == null ? "Journal d'audit intact : " + n + " évènements vérifiés."
+                                                         : "Chaîne rompue : " + broken + " (" + n + " évènements lus).");
+                        return broken == null ? 0 : 3;
+                    }
+                    else if (cmd == "--audit-report")
+                    {
+                        var path = Report.Generate(new Config(Path.Combine(Root, "config.txt")).AuditDays);
+                        Console.WriteLine("Rapport : " + path);
+                        if (!args.Contains("--no-open")) Process.Start(path);
+                    }
                     else if (cmd == "--install") Installer.Install();
                     else if (cmd == "--uninstall") Installer.Uninstall();
                     else DumpPlan();
@@ -172,6 +189,7 @@ namespace ClaudeNotch
             add("Notification", "idle_prompt|agent_needs_input", entry(new[] { "state", "waiting" }, true, 0));
             add("Stop",               null, entry(new[] { "state", "ready" }, true, 0));
             add("StopFailure",        null, entry(new[] { "state", "error" }, true, 0));
+            add("PermissionDenied",   null, entry(new[] { "audit" }, true, 0));
             // Fin de session : bloquant, pour que l'etat soit retire avant la sortie.
             add("SessionEnd",         null, entry(new[] { "state", "end" }, false, 5));
 
@@ -182,10 +200,12 @@ namespace ClaudeNotch
 
             Save(settings);
             CreateStartupLink();
+            UserPath(true);
 
             Console.WriteLine("Hooks ClaudeNotch installés dans " + SettingsPath +
                               (removed > 0 ? " (" + removed + " anciennes entrées remplacées)." : "."));
             Console.WriteLine("Démarrage avec Windows : " + StartupLink);
+            Console.WriteLine("Commande bip ajoutée au PATH (nouveaux terminaux) : bip run <commande>");
         }
 
         public static void Uninstall()
@@ -197,6 +217,7 @@ namespace ClaudeNotch
             if (removed > 0) Save(settings);
 
             try { if (File.Exists(StartupLink)) File.Delete(StartupLink); } catch { }
+            UserPath(false);
 
             EventWaitHandle ev;
             if (EventWaitHandle.TryOpenExisting(Program.QUIT_EVENT, out ev)) using (ev) ev.Set();
@@ -204,6 +225,43 @@ namespace ClaudeNotch
             Console.WriteLine(removed + " entrées ClaudeNotch retirées de " + SettingsPath + ".");
             Console.WriteLine("Démarrage avec Windows retiré. Le dossier ClaudeNotch peut être supprimé.");
         }
+
+        // Ajoute ou retire le dossier de Bip du PATH de l'utilisateur. Lecture et ecriture
+        // brutes dans le registre : les %VARIABLES% et le type de la valeur sont conserves.
+        static void UserPath(bool add)
+        {
+            try
+            {
+                using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey("Environment", true))
+                {
+                    if (k == null) return;
+                    var raw = (k.GetValue("Path", "", Microsoft.Win32.RegistryValueOptions.DoNotExpandEnvironmentNames) as string) ?? "";
+                    var kind = k.GetValueNames().Contains("Path", StringComparer.OrdinalIgnoreCase)
+                        ? k.GetValueKind("Path") : Microsoft.Win32.RegistryValueKind.ExpandString;
+                    // Type inattendu ou dossier contenant ";" : on ne touche a rien.
+                    if ((kind != Microsoft.Win32.RegistryValueKind.String && kind != Microsoft.Win32.RegistryValueKind.ExpandString)
+                        || Program.Root.Contains(";"))
+                    {
+                        Console.WriteLine("PATH non modifié : ajoute à la main " + Program.Root + " si tu veux la commande bip.");
+                        return;
+                    }
+                    var parts = raw.Split(';').Where(x => x.Trim().Length > 0).ToList();
+                    string me = Program.Root.TrimEnd('\\');
+                    bool has = parts.Any(x => string.Equals(x.Trim().TrimEnd('\\'), me, StringComparison.OrdinalIgnoreCase));
+                    if (add == has) return;
+                    if (add) parts.Add(me);
+                    else parts.RemoveAll(x => string.Equals(x.Trim().TrimEnd('\\'), me, StringComparison.OrdinalIgnoreCase));
+                    k.SetValue("Path", string.Join(";", parts), kind);
+                }
+                // Prevenir Windows (et l'Explorateur) que l'environnement a change.
+                IntPtr result;
+                SendMessageTimeout(new IntPtr(0xFFFF), 0x1A, IntPtr.Zero, "Environment", 2, 2000, out result);
+            }
+            catch (Exception ex) { Console.WriteLine("PATH non modifié : " + ex.Message); }
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint msg, IntPtr wParam, string lParam, uint flags, uint timeout, out IntPtr result);
 
         // Retire nos entrees, puis les groupes et evenements devenus vides.
         static int Strip(Dictionary<string, object> hooks)

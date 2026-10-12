@@ -17,7 +17,8 @@ set "WPF=%FW%\WPF"
   /out:"%~dp0ClaudeNotch.exe" ^
   /r:System.dll /r:System.Core.dll /r:System.Xaml.dll /r:System.Web.Extensions.dll ^
   /r:"%WPF%\WindowsBase.dll" /r:"%WPF%\PresentationCore.dll" /r:"%WPF%\PresentationFramework.dll" ^
-  "%~dp0src\App.cs" "%~dp0src\Json.cs" "%~dp0src\Model.cs" "%~dp0src\NotchWindow.cs" "%~dp0src\Bip.cs" "%~dp0src\Version.cs"
+  "%~dp0src\App.cs" "%~dp0src\Json.cs" "%~dp0src\Model.cs" "%~dp0src\NotchWindow.cs" "%~dp0src\Bip.cs" "%~dp0src\Version.cs" ^
+  "%~dp0src\Audit.cs" "%~dp0src\Rules.cs" "%~dp0src\Report.cs"
 if errorlevel 1 (
   echo.
   echo Compilation de ClaudeNotch echouee.
@@ -27,8 +28,8 @@ if errorlevel 1 (
 rem NotchHook.exe est lance a chaque appel d'outil : s'il est verrouille par une
 rem session active, on compile a cote puis on retente la mise en place.
 "%CSC%" /nologo /target:winexe /optimize+ /warn:1 ^
-  /out:"%~dp0NotchHook.new" /r:System.dll /r:System.Core.dll ^
-  "%~dp0src\NotchHook.cs" "%~dp0src\Version.cs"
+  /out:"%~dp0NotchHook.new" /r:System.dll /r:System.Core.dll /r:System.Web.Extensions.dll ^
+  "%~dp0src\NotchHook.cs" "%~dp0src\Version.cs" "%~dp0src\Json.cs" "%~dp0src\Audit.cs"
 if errorlevel 1 (
   echo.
   echo Compilation de NotchHook echouee.
@@ -48,5 +49,16 @@ if not defined PLACED (
   echo Note : NotchHook.exe reste verrouille, l'ancien binaire est conserve.
 )
 
+rem bip.exe : la commande "bip run", en console pour partager le terminal.
+"%CSC%" /nologo /target:exe /optimize+ /warn:1 ^
+  /out:"%~dp0bip.exe" /r:System.dll ^
+  "%~dp0src\BipCli.cs" "%~dp0src\Version.cs"
+if errorlevel 1 (
+  echo.
+  echo Compilation de bip echouee.
+  exit /b 1
+)
+
 for %%F in ("%~dp0ClaudeNotch.exe") do echo Compile : ClaudeNotch.exe  %%~zF octets
 for %%F in ("%~dp0NotchHook.exe")   do echo Compile : NotchHook.exe    %%~zF octets
+for %%F in ("%~dp0bip.exe")         do echo Compile : bip.exe          %%~zF octets

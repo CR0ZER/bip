@@ -27,12 +27,16 @@ jobs:
         shell: cmd
         run: build.cmd
 
+      - name: Tests (audit, regles, chainage)
+        shell: cmd
+        run: tests\run.cmd
+
       - name: Paquet
         shell: pwsh
         run: |
           $name = "Bip-${{ github.ref_name }}"
           New-Item -ItemType Directory $name | Out-Null
-          Copy-Item ClaudeNotch.exe, NotchHook.exe, installer.cmd, desinstaller.cmd, build.cmd, README.md, LICENSE $name
+          Copy-Item ClaudeNotch.exe, NotchHook.exe, bip.exe, installer.cmd, desinstaller.cmd, build.cmd, README.md, LICENSE $name
           Copy-Item src $name -Recurse
           Compress-Archive -Path $name -DestinationPath "$name.zip"
           $hash = (Get-FileHash "$name.zip" -Algorithm SHA256).Hash.ToLower()

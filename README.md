@@ -70,9 +70,46 @@ Le kit complet (SVG, PNG, valeurs de référence, aperçu animé) est dans [`des
 - **Encoche vide** : Bip salue (et réagit si tu cliques dessus), dernières sessions terminées,
   bilan du jour (sessions, temps de travail, réponses). Un clic ailleurs ouvre Claude.
 - **Ne pas déranger** pendant 1 h : ni entrouverture, ni éclat, ni clignotement.
+- **Sourdine automatique pendant les appels** (Teams, Zoom, Meet, Slack, Discord, Webex…) :
+  Bip le signale d'un bref « ☾ Ne pas déranger · appel en cours », puis te dit à la fin de
+  l'appel ce qui s'est passé (« 2 sessions ont fini · data-pipeline t'attend depuis 12 min »).
+  Détectée par l'utilisation du micro, aucune intégration à installer ; désactivable.
 - **Escalade douce** : après 5 min d'attente, la fenêtre Claude clignote dans la barre des
   tâches (désactivable). Jamais de mise au premier plan forcée, aucun son.
 - **Invisible quand il le faut** : masquée pendant les applis en plein écran.
+
+### Suivre une commande longue : `bip run`
+
+```bat
+bip run npm run build
+```
+
+La commande tourne dans ton terminal, sortie et couleurs intactes, et apparaît dans l'encoche
+avec sa durée. À la fin, Bip s'entrouvre (« npm run build a fini · 4 min 12 s », ou en échec
+avec le code de retour). `bip` renvoie le code de la commande : il s'utilise dans un script.
+
+### Journal d'audit
+
+Bip garde la trace de **tout ce que les agents font sur le poste** : chaque commande, fichier
+modifié ou page consultée, qui l'a autorisé (toi dans Bip, toi dans Claude, une règle, le mode
+auto) et le résultat.
+
+- **Secrets masqués avant écriture** (jetons, clés d'API, mots de passe, identifiants dans les
+  adresses).
+- **Chaîne d'empreintes SHA-256** : une ligne modifiée ou supprimée après coup, ou une fin de
+  journal tronquée, se voit. `ClaudeNotch.exe --verify-audit` la contrôle.
+- **Rapport** depuis le menu de l'encoche (« Journal d'audit… ») : une page autonome avec
+  filtres par période, projet, décision et texte, et export CSV.
+- Conservé 90 jours, sur le poste uniquement.
+
+### Règles suggérées
+
+Après **5 autorisations de la même commande dans un projet** (`npm test`, `pytest`…), Bip
+propose d'en faire une règle Claude Code, en affichant la règle exacte : **Ce projet** (écrite
+dans `.claude/settings.local.json`, non versionné), **Partout**, ou **Non, ne plus proposer**.
+Jamais de suggestion pour une commande composée, risquée (suppression, `git push`, réseau,
+interpréteur…) ou trop large. Les règles créées se retirent d'un clic depuis le menu, et chaque
+ajout ou retrait est inscrit au journal d'audit.
 
 ## Installation
 
@@ -97,9 +134,9 @@ cd bip
 installer.cmd
 ```
 
-`installer.cmd` compile les deux exécutables si besoin, ajoute les hooks de Bip dans
-`~/.claude/settings.json` (une sauvegarde datée est faite à côté), ajoute l'encoche au
-démarrage de Windows et la lance. Il peut être relancé sans risque.
+`installer.cmd` compile les exécutables si besoin, ajoute les hooks de Bip dans
+`~/.claude/settings.json` (une sauvegarde datée est faite à côté), ajoute le dossier de Bip à
+ton `PATH` (pour `bip run`), ajoute l'encoche au démarrage de Windows et la lance. Il peut être relancé sans risque.
 
 Pour tout retirer : `desinstaller.cmd`, puis supprimer le dossier. Seules les entrées de Bip
 sont retirées de `settings.json` ; tes autres hooks ne sont pas touchés.
@@ -159,8 +196,13 @@ src/
   Bip.cs          la mascotte (portage C# du contrôle WPF du kit)
   Model.cs        sessions, journal du jour, demandes en attente, pipe nommé
   NotchHook.cs    le hook appelé par Claude Code
+  BipCli.cs       bip.exe : bip run <commande>
+  Audit.cs        journal d'audit : écriture chaînée, masquage, lecture
+  Rules.cs        règles suggérées
+  Report.cs       rapport d'audit HTML
   Json.cs         lecture / écriture JSON
   Version.cs      numéro de version (vérifié par la release)
+tests/                 tests du journal d'audit (lancés aussi par la release)
 design/bip-mascotte/   kit de la mascotte (SVG, PNG, tokens.json, aperçu animé)
 docs/                  journal de conception et captures
 .github/workflows/     release automatique à chaque tag vX.Y.Z
@@ -246,9 +288,43 @@ The full kit (SVG, PNG, reference values, animated preview) is in [`design/bip-m
 - **Empty notch**: Bip says hello (and reacts when you click it), recent finished sessions,
   today's summary (sessions, working time, answers). Clicking anywhere else opens Claude.
 - **Do not disturb** for 1 h: no peeking, no glow, no flashing.
+- **Automatic mute during calls** (Teams, Zoom, Meet, Slack, Discord, Webex…): Bip says so
+  briefly, then tells you at the end of the call what happened while you were busy. Detected
+  from microphone use, nothing to integrate; can be turned off.
 - **Gentle escalation**: after 5 min of waiting, the Claude window flashes in the taskbar
   (can be turned off). Never forced to the foreground, no sound at all.
 - **Out of the way when needed**: hidden while a full-screen app is running.
+
+#### Follow a long command: `bip run`
+
+```bat
+bip run npm run build
+```
+
+The command runs in your terminal, output and colours untouched, and shows up in the notch with
+its duration. When it ends, Bip peeks open ("npm run build a fini · 4 min 12 s", or the exit
+code on failure). `bip` returns the command's exit code, so it works in scripts.
+
+#### Audit log
+
+Bip records **everything agents do on the machine**: every command, edited file or fetched page,
+who allowed it (you in Bip, you in Claude, a rule, auto mode) and the outcome.
+
+- **Secrets masked before writing** (tokens, API keys, passwords, credentials in URLs).
+- **SHA-256 hash chain**: a line edited or deleted afterwards, or a truncated log, shows up.
+  `ClaudeNotch.exe --verify-audit` checks it.
+- **Report** from the notch menu ("Journal d'audit…"): a self-contained page with filters by
+  period, project, decision and text, plus CSV export.
+- Kept 90 days, on the machine only.
+
+#### Suggested rules
+
+After **5 approvals of the same command in a project** (`npm test`, `pytest`…), Bip offers to
+turn it into a Claude Code rule and shows the exact rule: **this project** (written to the
+unversioned `.claude/settings.local.json`), **everywhere**, or **never suggest again**. Never for
+compound, risky (deletion, `git push`, network, interpreters…) or overly broad commands. Rules
+created by Bip can be removed in one click from the menu, and every change is written to the
+audit log.
 
 ### Installation
 
@@ -272,8 +348,9 @@ cd bip
 installer.cmd
 ```
 
-`installer.cmd` builds both executables if needed, adds Bip's hooks to `~/.claude/settings.json`
-(a dated backup is saved next to it), adds the notch to Windows startup and launches it. It is
+`installer.cmd` builds the executables if needed, adds Bip's hooks to `~/.claude/settings.json`
+(a dated backup is saved next to it), adds Bip's folder to your `PATH` (for `bip run`), adds the
+notch to Windows startup and launches it. It is
 safe to run again.
 
 To remove everything: `desinstaller.cmd`, then delete the folder. Only Bip's entries are removed
@@ -333,8 +410,13 @@ src/
   Bip.cs          the mascot (C# port of the kit's WPF control)
   Model.cs        sessions, daily log, pending requests, named pipe
   NotchHook.cs    the hook called by Claude Code
+  BipCli.cs       bip.exe: bip run <command>
+  Audit.cs        audit log: chained writes, masking, reading
+  Rules.cs        suggested rules
+  Report.cs       HTML audit report
   Json.cs         JSON reading / writing
   Version.cs      version number (checked by the release)
+tests/                 audit log tests (also run by the release)
 design/bip-mascotte/   mascot kit (SVG, PNG, tokens.json, animated preview)
 docs/                  design journal and screenshots
 .github/workflows/     automatic release on every vX.Y.Z tag

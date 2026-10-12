@@ -1,6 +1,10 @@
 // NotchHook.exe state <etat>    hooks async : ecrit l'etat de la session dans state\
 // NotchHook.exe permission      hook PermissionRequest synchrone : relaie a l'encoche
 // NotchHook.exe ask             hook PreToolUse (AskUserQuestion) synchrone : idem
+// NotchHook.exe audit           hook PermissionDenied async : journal d'audit seulement
+//
+// Chaque utilisation d'outil est aussi inscrite au journal d'audit (Audit.cs), par le
+// hook lui-meme : l'audit fonctionne meme encoche fermee.
 //
 // Compile en /target:winexe : aucune console, donc aucun clignotement de fenetre.
 // En mode relais, le hook ne decide rien : il transmet le JSON recu a ClaudeNotch.exe
@@ -8,6 +12,7 @@
 // encoche absente ou erreur : il n'imprime rien, et Claude pose la question lui-meme.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
@@ -17,6 +22,7 @@ using System.Security.Principal;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
+using ClaudeNotch;
 
 static class NotchHook
 {
@@ -108,9 +114,21 @@ static class NotchHook
             }
             if (string.IsNullOrEmpty(id)) id = "session";
 
+            string evt = JsonField(input, "hook_event_name") ?? "";
+            // Racine du projet (les regles "ce projet" y sont ecrites) ; dir peut etre un sous-dossier.
+            string proj = Environment.GetEnvironmentVariable("CLAUDE_PROJECT_DIR");
+            if (string.IsNullOrEmpty(proj)) proj = dir;
+
             if (mode == "state")
             {
-                WriteState(id, args.Length > 1 ? args[1] : "ready", dir, started);
+                // Etat et audit independants : l'echec de l'un ne prive pas l'autre.
+                try { WriteState(id, args.Length > 1 ? args[1] : "ready", dir, started); } catch { }
+                if (evt == "PreToolUse" || evt == "PostToolUse" || evt == "PostToolUseFailure") AuditTool(evt, input, id, dir, proj);
+                return 0;
+            }
+            if (mode == "audit")
+            {
+                AuditTool(evt, input, id, dir, proj);
                 return 0;
             }
 
@@ -121,26 +139,89 @@ static class NotchHook
                 string tool = JsonField(input, "tool_name") ?? "";
                 if (mode == "permission" && (tool == "ExitPlanMode" || tool == "AskUserQuestion")) return 0;
 
-                string reply = Relay(mode, input);
+                if (mode == "permission") AuditTool("PermissionRequest", input, id, dir, proj);
+                string reply = Relay(mode, WithProject(input, proj));
                 if (!string.IsNullOrEmpty(reply))
                 {
+                    // La reponse d'abord : Claude attend, le journal peut suivre.
                     var bytes = new UTF8Encoding(false).GetBytes(reply);
                     using (var o = Console.OpenStandardOutput()) o.Write(bytes, 0, bytes.Length);
-                    // L'utilisateur a repondu : la session repart (l'outil autorise tourne,
-                    // ou Claude enchaine apres un refus).
-                    WriteState(id, "busy", dir, DateTime.Now);
                 }
-                else
-                {
-                    // Claude va poser la question lui-meme : la session attend l'utilisateur.
-                    // Horodatage "maintenant" : cet evenement suit le busy du PreToolUse.
-                    WriteState(id, "waiting", dir, DateTime.Now);
-                }
+                if (mode == "permission") AuditDecision(reply, input, id);
+                // Repondu : la session repart. Sinon Claude pose la question lui-meme et la
+                // session attend l'utilisateur. Horodatage "maintenant" : suit le busy du PreToolUse.
+                WriteState(id, string.IsNullOrEmpty(reply) ? "waiting" : "busy", dir, DateTime.Now);
             }
         }
         catch { /* un hook ne doit jamais faire echouer une session */ }
 
         return 0;
+    }
+
+    // ------------------------------------------------------------ journal d'audit
+
+    // Ajoute la racine du projet au JSON relaye a l'encoche (champ "bip_proj").
+    static string WithProject(string input, string proj)
+    {
+        var t = input.TrimStart();
+        if (string.IsNullOrEmpty(proj) || !t.StartsWith("{")) return input;
+        return "{\"bip_proj\":" + Json.Write(proj) + "," + t.Substring(1);
+    }
+
+    static void AuditTool(string evt, string input, string id, string dir, string proj)
+    {
+        try
+        {
+            string ev;
+            switch (evt)
+            {
+                case "PreToolUse":         ev = "outil"; break;
+                case "PermissionRequest":  ev = "demande"; break;
+                case "PostToolUse":        ev = "fait"; break;
+                case "PostToolUseFailure": ev = "echec"; break;
+                case "PermissionDenied":   ev = "refus-auto"; break;
+                default: return;
+            }
+            var d = Json.Obj(Json.Parse(input));
+            if (d == null) return;
+            string tool = Json.Str(d, "tool_name") ?? "";
+            var fields = new Dictionary<string, object>
+            {
+                { "sess", id },
+                { "tool", tool },
+                { "obj", Audit.Summarize(tool, Json.Obj(Json.Get(d, "tool_input"))) },
+                { "tuid", Json.Str(d, "tool_use_id") }
+            };
+            if (ev == "outil")
+            {
+                fields["dir"] = dir;
+                if (proj != dir) fields["proj"] = proj;
+                fields["mode"] = Json.Str(d, "permission_mode");
+            }
+            Audit.Write(Root, ev, fields);
+        }
+        catch { }
+    }
+
+    // Reponse de l'encoche : autorise / toujours / refuse ; vide = la fenetre Claude decide.
+    static void AuditDecision(string reply, string input, string id)
+    {
+        try
+        {
+            var d = Json.Obj(Json.Parse(input));
+            if (d == null) return;
+            string tool = Json.Str(d, "tool_name") ?? "";
+            string dec = string.IsNullOrEmpty(reply) ? "claude"
+                       : reply.Contains("\"behavior\":\"deny\"") ? "deny"
+                       : reply.Contains("updatedPermissions") ? "always" : "allow";
+            Audit.Write(Root, "decision", new Dictionary<string, object>
+            {
+                { "sess", id }, { "tool", tool },
+                { "obj", Audit.Summarize(tool, Json.Obj(Json.Get(d, "tool_input"))) },
+                { "tuid", Json.Str(d, "tool_use_id") }, { "dec", dec }
+            });
+        }
+        catch { }
     }
 
     static void WriteState(string id, string state, string dir, DateTime when)

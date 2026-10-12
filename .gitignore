@@ -7,3 +7,6 @@ state/
 config.txt
 notch.log
 journal/
+audit/
+rules/
+_demo/

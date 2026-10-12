@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -53,6 +54,12 @@ namespace ClaudeNotch
         public St State;
         public DateTime Since;   // entree dans l'etat courant
         public DateTime Order;   // lancement de la session : ordre stable dans l'encoche
+        public string Kind = "claude";   // "claude" ou "run" (commande lancee par bip run)
+        public string Label;             // run : la commande
+        public string Code;              // run termine : code de retour, ou "interrompu"
+
+        public bool IsRun { get { return Kind == "run"; } }
+        public TimeSpan RunTime { get { return Since - Order; } }   // run termine : duree
 
         public TimeSpan Elapsed { get { return DateTime.Now - Since; } }
 
@@ -73,6 +80,8 @@ namespace ClaudeNotch
         public bool Flash = true;
         public DateTime DndUntil = DateTime.MinValue;   // "ne pas deranger" jusqu'a cette heure
         public bool Dnd { get { return DateTime.Now < DndUntil; } }
+        public bool AutoDnd = true;      // sourdine automatique pendant les appels
+        public int AuditDays = 90;       // conservation du journal d'audit
 
         public Config(string path)
         {
@@ -87,6 +96,8 @@ namespace ClaudeNotch
                     var k = kv[0].Trim(); var v = kv[1].Trim();
                     if (k == "flash") Flash = v != "0";
                     else if (k == "dnd") { long t; if (long.TryParse(v, out t)) DndUntil = new DateTime(t); }
+                    else if (k == "autodnd") AutoDnd = v != "0";
+                    else if (k == "audit_days") { int n; if (int.TryParse(v, out n) && n > 0) AuditDays = n; }
                 }
             }
             catch { }
@@ -97,7 +108,9 @@ namespace ClaudeNotch
             try
             {
                 File.WriteAllText(_path, "flash=" + (Flash ? "1" : "0") + Environment.NewLine +
-                                         "dnd=" + DndUntil.Ticks + Environment.NewLine);
+                                         "dnd=" + DndUntil.Ticks + Environment.NewLine +
+                                         "autodnd=" + (AutoDnd ? "1" : "0") + Environment.NewLine +
+                                         "audit_days=" + AuditDays + Environment.NewLine);
             }
             catch { }
         }
@@ -107,13 +120,14 @@ namespace ClaudeNotch
 
     class DayStats
     {
-        public int Sessions, Answers;
+        public int Sessions, Answers, Commands, CommandFailures;
         public TimeSpan Work;
         public List<Tuple<string, DateTime>> Finished = new List<Tuple<string, DateTime>>();   // nom, fin (3 au plus)
     }
 
     // Un fichier par jour (journal\AAAA-MM-JJ.log), garde 7 jours. Lignes
-    // "HH:mm:ss|evenement|session|nom" ; evenements : travail, pause, termine, reponse.
+    // "HH:mm:ss|evenement|session|nom" ; evenements : travail, pause, termine, reponse,
+    // commande-ok, commande-ko (commandes suivies par bip run).
     static class Journal
     {
         static string Dir { get { return Path.Combine(Program.Root, "journal"); } }
@@ -140,6 +154,24 @@ namespace ClaudeNotch
             catch { }
         }
 
+        // Evenements du jour posterieurs a "from" : (heure, evenement, nom).
+        public static List<Tuple<DateTime, string, string>> Since(DateTime from)
+        {
+            var list = new List<Tuple<DateTime, string, string>>();
+            string[] lines;
+            try { lines = File.ReadAllLines(FileOf(DateTime.Now), Encoding.UTF8); }
+            catch { return list; }
+            foreach (var l in lines)
+            {
+                var p = l.Split(new[] { '|' }, 4);
+                DateTime t;
+                if (p.Length < 4 || !DateTime.TryParseExact(p[0], "HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out t)) continue;
+                var at = DateTime.Today + t.TimeOfDay;
+                if (at >= from.AddSeconds(-1)) list.Add(Tuple.Create(at, p[1], p[3]));
+            }
+            return list;
+        }
+
         public static DayStats Today()
         {
             var st = new DayStats();
@@ -156,7 +188,7 @@ namespace ClaudeNotch
                 DateTime t;
                 if (p.Length < 4 || !DateTime.TryParseExact(p[0], "HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out t)) continue;
                 var at = DateTime.Today + t.TimeOfDay;
-                ids.Add(p[2]);
+                if (!p[1].StartsWith("commande")) ids.Add(p[2]);
                 DateTime start;
                 switch (p[1])
                 {
@@ -164,6 +196,8 @@ namespace ClaudeNotch
                     case "pause":   if (open.TryGetValue(p[2], out start)) { st.Work += at - start; open.Remove(p[2]); } break;
                     case "termine": finished[p[2]] = Tuple.Create(p[3], at); break;
                     case "reponse": st.Answers++; break;
+                    case "commande-ok": st.Commands++; break;
+                    case "commande-ko": st.Commands++; st.CommandFailures++; break;
                 }
             }
             foreach (var since in open.Values) st.Work += DateTime.Now - since;   // encore au travail
@@ -183,6 +217,7 @@ namespace ClaudeNotch
         static readonly TimeSpan STALE_BUSY_ALIVE = TimeSpan.FromHours(1);
         static readonly TimeSpan STALE_WAITING = TimeSpan.FromHours(6);
         static readonly TimeSpan STALE_READY   = TimeSpan.FromMinutes(4);   // pret / au repos, puis le Bip s'efface
+        static readonly TimeSpan STALE_RUN_ERROR = TimeSpan.FromMinutes(10);  // commande en echec
         static readonly TimeSpan PURGE_AGE     = TimeSpan.FromHours(12);
 
         // Ce qui merite une place dans l'encoche ("pret" s'efface au bout de 10 min).
@@ -203,14 +238,30 @@ namespace ClaudeNotch
                     var raw = ReadShared(f);
                     if (raw.Length == 0) continue;
 
-                    var parts = raw.Split(new[] { '|' }, 3);
+                    // etat|dossier|pid, et pour une commande : |run|commande|code|debut
+                    var parts = raw.Split(new[] { '|' }, 7);
                     var st = States.Parse(parts[0]);
                     var dir = parts.Length > 1 ? parts[1].Trim() : "";
                     var since = File.GetLastWriteTime(f);
                     int pid = 0;
                     if (parts.Length > 2) int.TryParse(parts[2].Trim(), out pid);
+                    string kind = parts.Length > 3 && parts[3].Trim() == "run" ? "run" : "claude";
+                    DateTime start = DateTime.MinValue;
+                    bool hasStart = parts.Length > 6 && DateTime.TryParse(parts[6].Trim(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out start);
+                    start = hasStart ? start.ToLocalTime() : File.GetCreationTime(f);
 
-                    if (pid > 0 && !ClaudeAlive(pid)) st = St.Stale;
+                    if (kind == "run")
+                    {
+                        // Preuve de vie : bip.exe, tant que la commande tourne. Une fois finie,
+                        // elle reste affichee 4 min (succes) ou 10 min (echec).
+                        var age = DateTime.Now - since;
+                        if (st == St.Busy && pid > 0 && !PidAlive(pid, hasStart ? start : DateTime.MinValue)) st = St.Stale;
+                        else if (st == St.Ready && age > STALE_READY) st = St.Stale;
+                        else if (st == St.Error && age > STALE_RUN_ERROR) st = St.Stale;
+                        // Commande effacee de l'encoche : son fichier n'a plus d'usage.
+                        if (st == St.Stale) { try { File.Delete(f); } catch { } continue; }
+                    }
+                    else if (pid > 0 && !ClaudeAlive(pid)) st = St.Stale;
                     else
                     {
                         var age = DateTime.Now - since;
@@ -219,14 +270,18 @@ namespace ClaudeNotch
                         else if ((st == St.Ready || st == St.Idle) && age > STALE_READY) st = St.Stale;
                     }
 
+                    string label = parts.Length > 4 ? parts[4].Trim() : null;
                     list.Add(new Session
                     {
                         Id = Path.GetFileNameWithoutExtension(f),
                         Dir = dir,
-                        Name = Session.NameOf(dir),
+                        Name = kind == "run" && !string.IsNullOrEmpty(label) ? label : Session.NameOf(dir),
                         State = st,
                         Since = since,
-                        Order = File.GetCreationTime(f)
+                        Order = start,
+                        Kind = kind,
+                        Label = label,
+                        Code = parts.Length > 5 ? parts[5].Trim() : null
                     });
                 }
                 catch { }
@@ -267,6 +322,28 @@ namespace ClaudeNotch
             catch { }
         }
 
+        // Seul "aucun processus avec ce pid" prouve la mort ; un refus d'acces (processus
+        // eleve) n'en est pas une. Un pid reutilise par un autre programme se voit a son
+        // heure de lancement.
+        static bool PidAlive(int pid, DateTime start)
+        {
+            try
+            {
+                using (var p = Process.GetProcessById(pid))
+                {
+                    try
+                    {
+                        if (p.HasExited) return false;
+                        return start == DateTime.MinValue || Math.Abs((p.StartTime - start).TotalSeconds) < 2;
+                    }
+                    catch (Win32Exception) { return true; }
+                    catch (InvalidOperationException) { return false; }
+                }
+            }
+            catch (ArgumentException) { return false; }
+            catch { return true; }
+        }
+
         // Enumerer les processus coute ~10 ms : cache de 3 s.
         static HashSet<int> _livePids;
         static DateTime _pidsAt = DateTime.MinValue;
@@ -296,6 +373,7 @@ namespace ClaudeNotch
         public string Kind;                       // "permission" | "ask"
         public string SessionId;
         public string Cwd;
+        public string Proj;                       // racine du projet (CLAUDE_PROJECT_DIR), sinon Cwd
         public Dictionary<string, object> Payload;
         public DateTime Since = DateTime.Now;
 
@@ -480,6 +558,7 @@ namespace ClaudeNotch
                     Kind = parts[0],
                     SessionId = Json.Str(payload, "session_id") ?? "",
                     Cwd = Json.Str(payload, "cwd") ?? "",
+                    Proj = Json.Str(payload, "bip_proj") ?? Json.Str(payload, "cwd") ?? "",
                     Payload = payload
                 };
                 var lk = new object();

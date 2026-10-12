@@ -19,20 +19,32 @@ ouverte peut demander un redémarrage.
 
 ## Utilisation
 
-- **Repliée** : jusqu'à 5 nuages dans l'ordre de lancement des sessions, puis
-  « +N ». Pastille du logo (comme ClaudeVoyant) : verte = prêt, orange = en
-  cours, rouge qui respire = en attente, rouge avec « ! » = erreur.
-- **Survol** : le panneau se déplie. Les demandes en attente sont en tête, en
-  grand, avec leurs boutons. Clic sur une session ou sur l'encoche : met Claude
-  au premier plan.
-- **Permissions** : Autoriser / Refuser ; « Toujours (cette session) » pour les
+L'encoche est un bloc noir collé en haut au centre de l'écran principal. Chaque
+session Claude Code y est représentée par **Bip**, la mascotte (kit complet dans
+`design/bip-mascotte`).
+
+- **Formes** :
+  - **trait** (120 × 4) quand aucune session n'est active ;
+  - **repliée** (22 px de haut) : un Bip par session dans l'ordre de lancement,
+    5 au plus puis « +N » ;
+  - **entrouverte** (320 × 60) pendant 4 s à chaque nouvelle demande : « projet
+    attend ta réponse » ;
+  - **dépliée** au survol (après 200 ms) : demandes en tête, puis les sessions.
+  Repliée ou entrouverte, l'encoche laisse passer les clics vers l'application
+  en dessous.
+- **États de Bip** : rouge, bras levé = en attente ; orange qui flotte = en cours ;
+  vert qui saute = prêt ; gris avec « ! » = erreur ; gris endormi = au repos
+  (session ouverte, rien demandé encore). Un éclat rouge balaie le bord bas
+  de l'encoche tant qu'une session attend.
+- **Permissions** : Autoriser / Refuser ; « Toujours : … (session) » pour les
   outils autres que les commandes shell (Bash, PowerShell).
 - **Questions** : choix unique, choix multiple, « Autre… » pour taper sa propre
   réponse (seul moment où l'encoche prend le clavier).
 - **Répondre dans Claude** : rend la main ; Claude affiche sa demande habituelle.
-- **Clic droit** : position (automatique, en bas à gauche, au centre de la barre
-  des tâches, en haut au centre), clignotement de la fenêtre Claude après
+- **Clic** sur une ligne de session : met Claude au premier plan.
+- **Clic droit** (encoche dépliée) : clignotement de la fenêtre Claude après
   5 min d'attente, dossier d'état, purge, Quitter.
+- Aucun son.
 
 Si l'encoche est fermée ou plante, les hooks rendent la main tout de suite et
 Claude pose ses questions comme d'habitude : jamais d'autorisation implicite.

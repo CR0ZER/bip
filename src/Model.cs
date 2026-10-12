@@ -14,7 +14,7 @@ using System.Threading;
 
 namespace ClaudeNotch
 {
-    enum St { Stale = 0, Ready = 1, Busy = 2, Error = 3, Waiting = 4 }
+    enum St { Stale = 0, Ready = 1, Busy = 2, Error = 3, Waiting = 4, Idle = 5 }
 
     static class States
     {
@@ -25,6 +25,7 @@ namespace ClaudeNotch
                 case "busy":    return St.Busy;
                 case "waiting": return St.Waiting;
                 case "error":   return St.Error;
+                case "idle":    return St.Idle;
                 default:        return St.Ready;
             }
         }
@@ -37,6 +38,7 @@ namespace ClaudeNotch
                 case St.Busy:    return "en cours";
                 case St.Waiting: return "en attente";
                 case St.Error:   return "erreur";
+                case St.Idle:    return "au repos";
                 default:         return "inactif";
             }
         }
@@ -67,7 +69,6 @@ namespace ClaudeNotch
     class Config
     {
         readonly string _path;
-        public string Position = "auto";   // auto | gauche | centre | haut
         public bool Flash = true;
 
         public Config(string path)
@@ -82,7 +83,6 @@ namespace ClaudeNotch
                     if (kv.Length != 2) continue;
                     var k = kv[0].Trim(); var v = kv[1].Trim();
                     if (k == "flash") Flash = v != "0";
-                    else if (k == "position") Position = v;
                 }
             }
             catch { }
@@ -92,8 +92,7 @@ namespace ClaudeNotch
         {
             try
             {
-                File.WriteAllText(_path, "position=" + Position + Environment.NewLine +
-                                         "flash=" + (Flash ? "1" : "0") + Environment.NewLine);
+                File.WriteAllText(_path, "flash=" + (Flash ? "1" : "0") + Environment.NewLine);
             }
             catch { }
         }
@@ -142,7 +141,7 @@ namespace ClaudeNotch
                         var age = DateTime.Now - since;
                         if (st == St.Busy && age > (pid == 0 ? STALE_BUSY : STALE_BUSY_ALIVE)) st = St.Stale;
                         else if (st == St.Waiting && age > STALE_WAITING) st = St.Stale;
-                        else if (st == St.Ready && age > STALE_READY) st = St.Stale;
+                        else if ((st == St.Ready || st == St.Idle) && age > STALE_READY) st = St.Stale;
                     }
 
                     list.Add(new Session

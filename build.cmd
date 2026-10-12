@@ -17,10 +17,7 @@ set "WPF=%FW%\WPF"
   /out:"%~dp0ClaudeNotch.exe" ^
   /r:System.dll /r:System.Core.dll /r:System.Xaml.dll /r:System.Web.Extensions.dll ^
   /r:"%WPF%\WindowsBase.dll" /r:"%WPF%\PresentationCore.dll" /r:"%WPF%\PresentationFramework.dll" ^
-  /resource:"%~dp0assets\clawd_green.png",clawd_green.png ^
-  /resource:"%~dp0assets\clawd_orange.png",clawd_orange.png ^
-  /resource:"%~dp0assets\clawd_red.png",clawd_red.png ^
-  "%~dp0src\App.cs" "%~dp0src\Json.cs" "%~dp0src\Model.cs" "%~dp0src\NotchWindow.cs"
+  "%~dp0src\App.cs" "%~dp0src\Json.cs" "%~dp0src\Model.cs" "%~dp0src\NotchWindow.cs" "%~dp0src\Bip.cs"
 if errorlevel 1 (
   echo.
   echo Compilation de ClaudeNotch echouee.

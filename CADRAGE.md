@@ -1,6 +1,6 @@
 # ClaudeNotch — cadrage
 
-maj : 2026-10-09 · statut : v1 livrée et installée (voir « Livraison » en fin de fichier)
+maj : 2026-10-12 · statut : v2 (encoche en haut, mascotte Bip) livrée et installée
 
 Évolution de ClaudeVoyant (`Documents\ClaudeVoyant`) en « encoche » posée sur la
 barre des tâches Windows, inspirée de coucou (github.com/Louis-CFM/coucou, MIT).
@@ -155,3 +155,28 @@ ajustements issus des relectures.
   1 h, puis Claude reprend la main) jusqu'au retour sur le bureau.
 - Les aperçus visuels des options AskUserQuestion ne sont pas affichés.
 - Le clic sur une session met l'app Claude au premier plan, pas l'onglet précis.
+
+## v2 du 2026-10-12 : encoche en haut et mascotte Bip
+
+Décisions de Florian (remplacent celles de « Position » et « Affichage » plus haut) :
+- **Toujours en haut au centre** de l'écran principal ; les positions sur la barre
+  des tâches sont supprimées.
+- **Mascotte Bip** (kit `design/bip-mascotte`, conçu par Claude Design depuis le
+  brief « ClaudeNotch — brief design ») : 5 états, dont « au repos » pour une
+  session ouverte qui n'a encore rien fait (hook `SessionStart` → `idle`).
+- **Entrouverte** : à chaque nouvelle demande, l'encoche s'agrandit 4 s pour dire
+  quelle session attend, puis se replie.
+- Ouverture **au survol** (200 ms). **Aucun son**, quel qu'il soit.
+- Animations : celles du kit (`tokens.json`), à l'identique.
+
+Mise en œuvre :
+- Le `BipControl` du kit (XAML, C# récent) est porté en code C# 5 (`src/Bip.cs`) :
+  le projet se compile toujours sans SDK. Géométrie, couleurs, mouvements et
+  durées identiques.
+- La fenêtre est fixe et transparente ; seul le bloc noir change de taille.
+  Repliée et entrouverte, elle laisse passer les clics et la souris est suivie
+  toutes les 30 ms pour détecter le survol.
+
+Vérifié par captures : trait et forme repliée avec congés, Bip par état, forme
+entrouverte puis repli, panneau déplié avec carte de permission et lignes de
+session, éclat d'attente. Les animations elles-mêmes sont à juger à l'œil.

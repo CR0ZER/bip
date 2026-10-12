@@ -158,7 +158,7 @@ namespace ClaudeNotch
             };
 
             // Affichage : async, ne bloque jamais la session.
-            add("SessionStart",       null, entry(new[] { "state", "ready" }, true, 0));
+            add("SessionStart",       null, entry(new[] { "state", "idle" }, true, 0));
             add("UserPromptSubmit",   null, entry(new[] { "state", "busy" }, true, 0));
             add("PreToolUse",         null, entry(new[] { "state", "busy" }, true, 0));
             add("PostToolUse",        null, entry(new[] { "state", "busy" }, true, 0));
@@ -273,19 +273,11 @@ namespace ClaudeNotch
     static class Native
     {
         [StructLayout(LayoutKind.Sequential)]
-        public struct RECT { public int Left, Top, Right, Bottom; }
-
-        [StructLayout(LayoutKind.Sequential)]
-        struct APPBARDATA
-        {
-            public int cbSize; public IntPtr hWnd; public uint uCallbackMessage;
-            public uint uEdge; public RECT rc; public IntPtr lParam;
-        }
+        public struct POINT { public int X, Y; }
 
         [StructLayout(LayoutKind.Sequential)]
         struct FLASHWINFO { public uint cbSize; public IntPtr hwnd; public uint dwFlags; public uint uCount; public uint dwTimeout; }
 
-        [DllImport("shell32.dll")] static extern IntPtr SHAppBarMessage(uint msg, ref APPBARDATA data);
         [DllImport("shell32.dll")] static extern int SHQueryUserNotificationState(out int state);
         [DllImport("user32.dll")] static extern bool FlashWindowEx(ref FLASHWINFO pwfi);
         [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hWnd);
@@ -294,25 +286,12 @@ namespace ClaudeNotch
         [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
         [DllImport("user32.dll")] public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int value);
         [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
-        [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
-
-        public delegate void WinEventProc(IntPtr hook, uint evt, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);
-        [DllImport("user32.dll")] public static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr mod, WinEventProc proc, uint pid, uint tid, uint flags);
+        [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT p);
 
         public const int GWL_EXSTYLE = -20;
-        public const int WS_EX_TOOLWINDOW = 0x80, WS_EX_NOACTIVATE = 0x08000000, WS_EX_TOPMOST = 0x8;
+        public const int WS_EX_TRANSPARENT = 0x20, WS_EX_TOOLWINDOW = 0x80, WS_EX_NOACTIVATE = 0x08000000;
         public static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
         public const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOACTIVATE = 0x10, SWP_NOOWNERZORDER = 0x200;
-        public const uint EVENT_SYSTEM_FOREGROUND = 3, WINEVENT_OUTOFCONTEXT = 0;
-
-        // Barre des taches de l'ecran principal, en pixels.
-        public static bool TaskbarRect(out RECT rc)
-        {
-            var d = new APPBARDATA { cbSize = Marshal.SizeOf(typeof(APPBARDATA)) };
-            bool ok = SHAppBarMessage(5 /* ABM_GETTASKBARPOS */, ref d) != IntPtr.Zero;
-            rc = d.rc;
-            return ok && rc.Right > rc.Left && rc.Bottom > rc.Top;
-        }
 
         // Plein ecran, jeu ou presentation : l'encoche s'efface.
         public static bool FullScreenApp()
@@ -320,21 +299,6 @@ namespace ClaudeNotch
             int s;
             if (SHQueryUserNotificationState(out s) != 0) return false;
             return s == 2 || s == 3 || s == 4;   // QUNS_BUSY, RUNNING_D3D_FULL_SCREEN, PRESENTATION_MODE
-        }
-
-        // Windows 11 : TaskbarAl = 0 (gauche) ou 1 (centre, valeur par defaut).
-        public static bool TaskbarAppsCentered()
-        {
-            try
-            {
-                using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"))
-                {
-                    var v = k == null ? null : k.GetValue("TaskbarAl");
-                    if (v is int) return (int)v != 0;
-                }
-                return Environment.OSVersion.Version.Build >= 22000;   // Windows 10 : applis a gauche
-            }
-            catch { return true; }
         }
 
         // L'app Claude desktop n'a qu'une fenetre pour toutes les sessions.

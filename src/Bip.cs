@@ -245,6 +245,48 @@ namespace ClaudeNotch
             _shift.BeginAnimation(TranslateTransform.YProperty, Keys(new[] { 0, 90, 270, 390, 510 }, new[] { 0, 0, -6.0, 0, 0 }, o, i));
         }
 
+        // ---- Reaction au clic : un saut, un clignement des yeux ou un petit signe.
+        public void Poke()
+        {
+            switch (Rng.Next(3))
+            {
+                case 0:
+                    Hop();
+                    var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(520) };
+                    t.Tick += (s, e) => { t.Stop(); if (_state == BipState.Running || _state == BipState.Neutral) Float(); };
+                    t.Start();
+                    break;
+                case 1: Blink(); break;
+                default: Wave(); break;
+            }
+        }
+
+        // Yeux fermes 120 ms (le visage endormi), puis rouverts.
+        void Blink()
+        {
+            if (_state == BipState.Idle) return;
+            UIElement face = _state == BipState.Waiting ? _faceWaiting : _state == BipState.Running ? _faceRunning
+                           : _state == BipState.Error ? _faceError : _faceReady;
+            face.BeginAnimation(OpacityProperty, Steps(new[] { 0, 60, 180, 240 }, new[] { 1.0, 0, 0, 1 }));
+            _faceIdle.BeginAnimation(OpacityProperty, Steps(new[] { 0, 60, 180, 240 }, new[] { 0.0, 1, 1, 0 }));
+        }
+
+        // Le bras se leve et s'agite deux fois.
+        void Wave()
+        {
+            if (_state == BipState.Waiting) return;   // il s'agite deja
+            _arm.BeginAnimation(OpacityProperty, Steps(new[] { 0, 120, 900, 1050 }, new[] { 0.0, 1, 1, 0 }));
+            _armRotate.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(-10, 12, Ms(180))
+                { AutoReverse = true, RepeatBehavior = new RepeatBehavior(2), BeginTime = TimeSpan.FromMilliseconds(100) });
+        }
+
+        static DoubleAnimationUsingKeyFrames Steps(int[] ms, double[] v)
+        {
+            var a = new DoubleAnimationUsingKeyFrames();
+            for (int n = 0; n < ms.Length; n++) a.KeyFrames.Add(new LinearDoubleKeyFrame(v[n], Kt(ms[n])));
+            return a;
+        }
+
         // Trames du saut : la 3e image monte (ease out), la 4e redescend (ease in).
         static DoubleAnimationUsingKeyFrames Keys(int[] ms, double[] v, IEasingFunction up, IEasingFunction down)
         {

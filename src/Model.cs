@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.IO.Pipes;
@@ -70,6 +71,8 @@ namespace ClaudeNotch
     {
         readonly string _path;
         public bool Flash = true;
+        public DateTime DndUntil = DateTime.MinValue;   // "ne pas deranger" jusqu'a cette heure
+        public bool Dnd { get { return DateTime.Now < DndUntil; } }
 
         public Config(string path)
         {
@@ -83,6 +86,7 @@ namespace ClaudeNotch
                     if (kv.Length != 2) continue;
                     var k = kv[0].Trim(); var v = kv[1].Trim();
                     if (k == "flash") Flash = v != "0";
+                    else if (k == "dnd") { long t; if (long.TryParse(v, out t)) DndUntil = new DateTime(t); }
                 }
             }
             catch { }
@@ -92,9 +96,80 @@ namespace ClaudeNotch
         {
             try
             {
-                File.WriteAllText(_path, "flash=" + (Flash ? "1" : "0") + Environment.NewLine);
+                File.WriteAllText(_path, "flash=" + (Flash ? "1" : "0") + Environment.NewLine +
+                                         "dnd=" + DndUntil.Ticks + Environment.NewLine);
             }
             catch { }
+        }
+    }
+
+    // ------------------------------------------------------------ journal du jour
+
+    class DayStats
+    {
+        public int Sessions, Answers;
+        public TimeSpan Work;
+        public List<Tuple<string, DateTime>> Finished = new List<Tuple<string, DateTime>>();   // nom, fin (3 au plus)
+    }
+
+    // Un fichier par jour (journal\AAAA-MM-JJ.log), garde 7 jours. Lignes
+    // "HH:mm:ss|evenement|session|nom" ; evenements : travail, pause, termine, reponse.
+    static class Journal
+    {
+        static string Dir { get { return Path.Combine(Program.Root, "journal"); } }
+        static string FileOf(DateTime d) { return Path.Combine(Dir, d.ToString("yyyy-MM-dd") + ".log"); }
+
+        public static void Add(string evt, string id, string name)
+        {
+            try
+            {
+                Directory.CreateDirectory(Dir);
+                File.AppendAllText(FileOf(DateTime.Now), DateTime.Now.ToString("HH:mm:ss") + "|" + evt + "|" + id + "|"
+                                   + (name ?? "").Replace("|", "_") + Environment.NewLine, new UTF8Encoding(false));
+            }
+            catch { }
+        }
+
+        public static void Purge()
+        {
+            try
+            {
+                foreach (var f in Directory.GetFiles(Dir, "*.log"))
+                    if (DateTime.Now - File.GetLastWriteTime(f) > TimeSpan.FromDays(7)) File.Delete(f);
+            }
+            catch { }
+        }
+
+        public static DayStats Today()
+        {
+            var st = new DayStats();
+            string[] lines;
+            try { lines = File.ReadAllLines(FileOf(DateTime.Now), Encoding.UTF8); }
+            catch { return st; }
+
+            var ids = new HashSet<string>();
+            var open = new Dictionary<string, DateTime>();      // debut de travail en cours, par session
+            var finished = new Dictionary<string, Tuple<string, DateTime>>();
+            foreach (var l in lines)
+            {
+                var p = l.Split(new[] { '|' }, 4);
+                DateTime t;
+                if (p.Length < 4 || !DateTime.TryParseExact(p[0], "HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out t)) continue;
+                var at = DateTime.Today + t.TimeOfDay;
+                ids.Add(p[2]);
+                DateTime start;
+                switch (p[1])
+                {
+                    case "travail": if (!open.ContainsKey(p[2])) open[p[2]] = at; break;
+                    case "pause":   if (open.TryGetValue(p[2], out start)) { st.Work += at - start; open.Remove(p[2]); } break;
+                    case "termine": finished[p[2]] = Tuple.Create(p[3], at); break;
+                    case "reponse": st.Answers++; break;
+                }
+            }
+            foreach (var since in open.Values) st.Work += DateTime.Now - since;   // encore au travail
+            st.Sessions = ids.Count;
+            st.Finished = finished.Values.OrderByDescending(f => f.Item2).Take(3).ToList();
+            return st;
         }
     }
 

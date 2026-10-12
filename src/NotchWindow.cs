@@ -165,6 +165,8 @@ namespace ClaudeNotch
             _shape.Height = LINE_H;
             _shape.SizeChanged += (s, e) => OnShapeSized(e.NewSize);
             _shape.ContextMenu = BuildMenu();
+            // Encoche vide : un clic n'importe ou (hors boutons et Bip) ouvre Claude.
+            _shape.MouseLeftButtonUp += (s, e) => { if (!e.Handled && _form == Form.Expanded && _views.Count == 0) Native.FocusClaude(); };
 
             // L'ombre est portee par un parent : le decoupage du bloc la couperait.
             _shadowHost.Effect = _shadow;
@@ -180,6 +182,7 @@ namespace ClaudeNotch
 
             Directory.CreateDirectory(Program.StateDir);
             Sessions.Purge(Program.StateDir);
+            Journal.Purge();
 
             new PipeServer(
                 p => Dispatcher.BeginInvoke((Action)(() => { _pending.Add(p); Refresh(); Peek(p); })),
@@ -300,6 +303,9 @@ namespace ClaudeNotch
         ContextMenu BuildMenu()
         {
             var m = new ContextMenu();
+            var dnd = new MenuItem { Header = "Ne pas déranger pendant 1 h", IsCheckable = true };
+            dnd.Click += (s, e) => ToggleDnd();
+            m.Items.Add(dnd);
             var flash = new MenuItem { Header = "Faire clignoter la fenêtre Claude (attente > 5 min)", IsCheckable = true };
             flash.Click += (s, e) => { _cfg.Flash = flash.IsChecked; _cfg.Save(); };
             m.Items.Add(flash);
@@ -326,7 +332,7 @@ namespace ClaudeNotch
             };
             m.Items.Add(quit);
 
-            m.Opened += (s, e) => { _menuOpen = true; flash.IsChecked = _cfg.Flash; };
+            m.Opened += (s, e) => { _menuOpen = true; flash.IsChecked = _cfg.Flash; dnd.IsChecked = _cfg.Dnd; };
             m.Closed += (s, e) => _menuOpen = false;
             return m;
         }
@@ -336,7 +342,7 @@ namespace ClaudeNotch
         void Refresh()
         {
             var loaded = Sessions.Load(Program.StateDir);
-            if (loaded != null) _sessions = loaded;
+            if (loaded != null) { _sessions = loaded; JournalTransitions(loaded); }
             _pending.RemoveAll(p => p.Done);
 
             var views = new List<View>();
@@ -379,6 +385,30 @@ namespace ClaudeNotch
         }
 
         Form RestForm() { return _views.Count == 0 ? Form.Line : Form.Collapsed; }
+
+        readonly Dictionary<string, St> _prev = new Dictionary<string, St>();
+
+        // Journal du jour : debut et fin de travail, session terminee. Seules les
+        // transitions observees comptent (un redemarrage ne cree pas de doublon).
+        void JournalTransitions(List<Session> sessions)
+        {
+            var seen = new HashSet<string>();
+            foreach (var s in sessions)
+            {
+                seen.Add(s.Id);
+                St prev;
+                bool had = _prev.TryGetValue(s.Id, out prev);
+                if (s.State == St.Busy && (!had || prev != St.Busy)) Journal.Add("travail", s.Id, s.Name);
+                if (had && prev == St.Busy && s.State != St.Busy) Journal.Add("pause", s.Id, s.Name);
+                if (had && prev != St.Ready && s.State == St.Ready) Journal.Add("termine", s.Id, s.Name);
+                _prev[s.Id] = s.State;
+            }
+            foreach (var id in _prev.Keys.Where(k => !seen.Contains(k)).ToList())
+            {
+                if (_prev[id] == St.Busy) Journal.Add("pause", id, "");
+                _prev.Remove(id);
+            }
+        }
 
         static BipState BipOf(St s)
         {
@@ -636,7 +666,7 @@ namespace ClaudeNotch
 
         void UpdateGlow()
         {
-            bool any = _views.Any(v => v.State == St.Waiting);
+            bool any = !_cfg.Dnd && _views.Any(v => v.State == St.Waiting);
             if (any == _glowOn) return;
             _glowOn = any;
             var fade = new DoubleAnimation(any ? 1 : 0, TimeSpan.FromMilliseconds(300));
@@ -659,7 +689,8 @@ namespace ClaudeNotch
         void Escalate()
         {
             var longest = _views.Where(v => v.State == St.Waiting).Select(v => DateTime.Now - v.Since).DefaultIfEmpty(TimeSpan.Zero).Max();
-            if (_cfg.Flash && longest >= FLASH_AFTER && DateTime.Now - _lastFlash > FLASH_EVERY)
+            UpdateGlow();   // fin du "ne pas deranger" : l'eclat reprend s'il le faut
+            if (_cfg.Flash && !_cfg.Dnd && longest >= FLASH_AFTER && DateTime.Now - _lastFlash > FLASH_EVERY)
             {
                 _lastFlash = DateTime.Now;
                 Native.FlashClaude();   // clignotement seulement : jamais de premier plan force
@@ -671,7 +702,7 @@ namespace ClaudeNotch
         // Une nouvelle demande : l'encoche s'agrandit 4 s pour dire qui attend, puis se replie.
         void Peek(Pending p)
         {
-            if (_form == Form.Expanded || p.Done) return;
+            if (_form == Form.Expanded || p.Done || _cfg.Dnd) return;
             var v = _views.FirstOrDefault(x => x.S.Id == p.SessionId);
             string name = v != null ? v.S.Name : Session.NameOf(p.Cwd);
 
@@ -735,7 +766,7 @@ namespace ClaudeNotch
             var rows = _views.Where(v => v.Pending.Count == 0).OrderBy(v => v.State == St.Waiting ? 0 : 1).ThenBy(v => v.S.Order).ToList();
             for (int i = 0; i < rows.Count; i++) _content.Children.Add(Row(rows[i], i > 0));
             if (_views.Count == 0)
-                _content.Children.Add(Greeting());
+                _content.Children.Add(EmptyPanel());
 
             foreach (var t in _tickers) t();
             _panelSig = sig;
@@ -764,69 +795,140 @@ namespace ClaudeNotch
             }
         }
 
-        // ------------------------------------------------------------ encoche vide : Bip parle
+        // ------------------------------------------------------------ encoche vide
 
-        static readonly string[][] Lines =
-        {
-            new[] { "Tout est calme.", "Aucune session en cours : je veille." },
-            new[] { "Rien à signaler.", "Lance Claude, je m'occupe du reste." },
-            new[] { "Pas de session ouverte.", "Une pause café ? Je surveille." },
-            new[] { "Je suis là.", "Dès que Claude travaille, je te dis où il en est." },
-        };
+        static readonly string[] Morning = { "Bonjour ! C'est Bip.", "Bonjour, Bip au rapport.", "Salut ! Bip veille sur tes sessions." };
+        static readonly string[] Afternoon = { "Salut, c'est Bip !", "Bip au rapport : tout est calme.", "Coucou, Bip est là." };
+        static readonly string[] Evening = { "Bonsoir ! C'est Bip.", "Bonsoir, Bip veille encore.", "Bip est là, tout est calme." };
         static readonly Random Rng = new Random();
         DispatcherTimer _typing;
+        TextBlock _dndText;
 
-        // Bip se reveille (endormi -> blanc casse souriant) et parle dans une bulle,
-        // ecrite lettre par lettre.
+        // Bip qui salue (avec le bouton "ne pas deranger"), les dernieres sessions
+        // terminees, puis le bilan du jour.
+        FrameworkElement EmptyPanel()
+        {
+            var panel = new StackPanel { Background = Brushes.Transparent, Cursor = Cursors.Hand, ToolTip = "Ouvrir Claude" };
+            panel.Children.Add(Greeting());
+
+            var st = Journal.Today();
+            if (st.Finished.Count > 0)
+            {
+                panel.Children.Add(new TextBlock { Text = "Dernières sessions", FontSize = 12, Foreground = Muted, Margin = new Thickness(4, 2, 0, 2) });
+                foreach (var f in st.Finished)
+                {
+                    var g = new Grid { Height = 30 };
+                    g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                    g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                    g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                    var bip = new Bip { Width = 18, Height = 18, State = BipState.Idle, Margin = new Thickness(5, 0, 11, 0), VerticalAlignment = VerticalAlignment.Center };
+                    g.Children.Add(bip);
+                    var name = new TextBlock { Text = f.Item1, FontFamily = Mono, FontSize = 12.5, Foreground = Code, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+                    Grid.SetColumn(name, 1);
+                    g.Children.Add(name);
+                    var when = new TextBlock { Text = "a fini il y a " + Fmt(DateTime.Now - f.Item2), FontSize = 12, Foreground = Muted, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 4, 0) };
+                    Grid.SetColumn(when, 2);
+                    g.Children.Add(when);
+                    panel.Children.Add(g);
+                }
+            }
+
+            panel.Children.Add(new Rectangle { Height = 1, Fill = Sep, Margin = new Thickness(0, 6, 0, 6) });
+            panel.Children.Add(new TextBlock { Text = StatsText(st), FontSize = 12, Foreground = Muted, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(4, 0, 4, 2) });
+            return panel;
+        }
+
+        static string StatsText(DayStats st)
+        {
+            if (st.Sessions == 0) return "Aujourd'hui : aucune session pour l'instant.";
+            string s = "Aujourd'hui · " + st.Sessions + (st.Sessions > 1 ? " sessions" : " session") + " · " + Duration(st.Work) + " de travail";
+            if (st.Answers > 0) s += " · " + st.Answers + (st.Answers > 1 ? " réponses" : " réponse");
+            return s;
+        }
+
+        static string Duration(TimeSpan t)
+        {
+            if (t.TotalMinutes < 1) return "moins d'1 min";
+            if (t.TotalMinutes < 60) return (int)t.TotalMinutes + " min";
+            return (int)t.TotalHours + " h " + t.Minutes.ToString("00");
+        }
+
+        // Bip se reveille (endormi -> blanc casse souriant) et salue en une ligne, ecrite
+        // lettre par lettre ; un clic sur lui le fait reagir. A droite : "ne pas deranger".
         FrameworkElement Greeting()
         {
             var hour = DateTime.Now.Hour;
-            var pick = Lines[Rng.Next(Lines.Length)];
-            string hello = hour < 12 ? "Bonjour ! " : hour < 18 ? "" : "Bonsoir ! ";
-            string first = hello + pick[0], second = pick[1];
+            var pool = hour < 12 ? Morning : hour < 18 ? Afternoon : Evening;
+            string line = pool[Rng.Next(pool.Length)];
 
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 6, 4, 6) };
-            var bip = new Bip { Width = 40, Height = 40, State = BipState.Idle, VerticalAlignment = VerticalAlignment.Center };
-            // Reveil : une fois affiche, il passe de l'etat endormi a l'etat neutre (250 ms).
+            var row = new Grid { Margin = new Thickness(4, 4, 4, 10) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var bip = new Bip { Width = 40, Height = 40, State = BipState.Idle, VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand, ToolTip = "Bip" };
             bip.Loaded += (s, e) => Dispatcher.BeginInvoke((Action)(() => bip.State = BipState.Neutral), DispatcherPriority.Background);
+            bip.MouseLeftButtonDown += (s, e) => e.Handled = true;
+            bip.MouseLeftButtonUp += (s, e) => { e.Handled = true; bip.Poke(); };
             row.Children.Add(bip);
 
-            var text = new TextBlock { FontSize = 13, LineHeight = 18, Foreground = Ink, TextWrapping = TextWrapping.Wrap, MaxWidth = EXP_W - 2 * EXP_PAD - 40 - 50 };
-            var r1 = new Run { FontWeight = FontWeights.SemiBold };
-            var r2 = new Run { Foreground = Muted };
-            text.Inlines.Add(r1);
-            text.Inlines.Add(new LineBreak());
-            text.Inlines.Add(r2);
-            // Hauteur fixee des le depart : la bulle ne grandit pas pendant l'ecriture.
-            r1.Text = first; r2.Text = second;
+            var text = new TextBlock { FontSize = 13, LineHeight = 18, FontWeight = FontWeights.SemiBold, Foreground = Ink, TextWrapping = TextWrapping.Wrap, MaxWidth = 190 };
+            // Taille fixee des le depart : la bulle ne bouge pas pendant l'ecriture.
+            text.Text = line;
             text.Measure(new Size(text.MaxWidth, double.PositiveInfinity));
             text.Width = Math.Ceiling(text.DesiredSize.Width);
             text.Height = text.DesiredSize.Height;
-            r1.Text = ""; r2.Text = "";
-
+            text.Text = "";
             var bubble = new Border
             {
                 Background = Card, CornerRadius = new CornerRadius(4, 14, 14, 14), Padding = new Thickness(12, 8, 12, 8),
-                Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Child = text
+                Margin = new Thickness(12, 0, 8, 0), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center, Child = text
             };
+            Grid.SetColumn(bubble, 1);
             row.Children.Add(bubble);
+
+            var dnd = (Border)Btn(DndLabel(), _cfg.Dnd ? Btn2 : Brushes.Transparent, Ink, Always, 28, ToggleDnd,
+                                  () => DateTime.Now - _expandedAt > ARM_DELAY);
+            dnd.VerticalAlignment = VerticalAlignment.Center;
+            dnd.Margin = new Thickness(0);
+            dnd.ToolTip = "Pendant 1 h : pas d'entrouverture, pas d'éclat, pas de clignotement de Claude";
+            _dndText = (TextBlock)dnd.Child;
+            Grid.SetColumn(dnd, 2);
+            row.Children.Add(dnd);
 
             // Ecriture lettre par lettre (30 ms), apres l'ouverture de l'encoche.
             if (_typing != null) _typing.Stop();
-            int n = 0, total = first.Length + second.Length;
-            var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(30) };
+            int n = 0;
             var start = DateTime.Now.AddMilliseconds(350);
+            var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(30) };
             t.Tick += (s, e) =>
             {
                 if (DateTime.Now < start) return;
-                n = Math.Min(total, n + 1);
-                r1.Text = first.Substring(0, Math.Min(n, first.Length));
-                r2.Text = n > first.Length ? second.Substring(0, n - first.Length) : "";
-                if (n >= total || _form != Form.Expanded) { t.Stop(); r1.Text = first; r2.Text = second; }
+                n = Math.Min(line.Length, n + 1);
+                text.Text = line.Substring(0, n);
+                if (n >= line.Length || _form != Form.Expanded) { t.Stop(); text.Text = line; }
             };
             _typing = t;
             t.Start();
             return row;
+        }
+
+        string DndLabel()
+        {
+            return _cfg.Dnd ? "☾ Pause jusqu'à " + _cfg.DndUntil.ToString("HH:mm") : "☾ Ne pas déranger";
+        }
+
+        void ToggleDnd()
+        {
+            _cfg.DndUntil = _cfg.Dnd ? DateTime.MinValue : DateTime.Now.AddHours(1);
+            _cfg.Save();
+            UpdateGlow();
+            if (_dndText != null)
+            {
+                _dndText.Text = DndLabel();
+                var b = _dndText.Parent as Border;
+                if (b != null) b.Background = _cfg.Dnd ? Btn2 : Brushes.Transparent;
+            }
         }
 
         // Ligne de session : 36 px, Bip 20 px, nom en Cascadia Mono, etat + duree a droite.
@@ -918,6 +1020,7 @@ namespace ClaudeNotch
 
         void Answer(Pending p, string json)
         {
+            if (!string.IsNullOrEmpty(json)) Journal.Add("reponse", p.SessionId, Session.NameOf(p.Cwd));
             _pending.Remove(p);
             _cards.Remove(p);
             ThreadPool.QueueUserWorkItem(_ => p.Reply(json));

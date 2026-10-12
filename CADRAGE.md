@@ -180,3 +180,34 @@ Mise en œuvre :
 Vérifié par captures : trait et forme repliée avec congés, Bip par état, forme
 entrouverte puis repli, panneau déplié avec carte de permission et lignes de
 session, éclat d'attente. Les animations elles-mêmes sont à juger à l'œil.
+
+## Performances (2026-10-12)
+
+Mesuré sur 20 s par configuration, avec les mêmes sessions. ClaudeVoyant est
+désactivé : icône arrêtée, raccourci de démarrage rangé dans son dossier, hooks
+retirés de `settings.json` avec une sauvegarde à côté.
+
+| | Processeur (1 cœur) | Mémoire privée | Threads |
+|---|---|---|---|
+| v2 avant optimisation | ~25 % | 279 Mo | 88 |
+| v2 optimisée, une session au travail | 4,7 % | 68 Mo | 12 |
+| v2 optimisée, aucun Bip animé | ~0,7 % | 69 Mo | 12 |
+| ClaudeVoyant, pour mémoire | 0,26 % | 32 Mo | 4 |
+
+Causes et corrections :
+- **L'éclat d'attente** balayait le bord en continu, même invisible, ce qui
+  forçait un rendu à 60 images/s : il ne tourne plus que si une session attend.
+  C'était le principal poste.
+- **Le rendu par la carte graphique** chargeait le pilote dans le processus
+  (~200 Mo, ~76 threads). L'encoche est maintenant en rendu logiciel, sans
+  différence visible.
+- **Les boucles d'animation** tournent à 15 images/s pour Bip et à 30 pour
+  l'éclat. Les ouvertures et fermetures restent à 60.
+- **La fenêtre suit la hauteur de l'encoche** au lieu de couvrir 90 % de
+  l'écran. Elle grandit juste avant une transformation et se resserre après.
+- Le suivi de la souris passe de 30 à 50 ms, la lecture des états de 300 à
+  500 ms.
+
+Écarté après mesure : rétrécir aussi la largeur de la fenêtre (aucun gain).
+`NotchHook.exe` coûte environ 70 ms par lancement, en arrière-plan. Chaque appel
+d'outil lance désormais 2 processus, contre 4 avec ClaudeVoyant.

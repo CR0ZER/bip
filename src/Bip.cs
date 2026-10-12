@@ -197,9 +197,9 @@ namespace ClaudeNotch
             if (_state != BipState.Waiting || !IsLoaded) return;
             var half = Ms(BreathePeriodMs() / 2);
             var ease = new SineEase { EasingMode = EasingMode.EaseInOut };
-            var sy = new DoubleAnimation(1, 1.08, half) { AutoReverse = true, EasingFunction = ease };
-            var sx = new DoubleAnimation(1, 1.04, half) { AutoReverse = true, EasingFunction = ease };
-            var arm = new DoubleAnimation(-10, 12, half) { AutoReverse = true, EasingFunction = ease };
+            var sy = Loop(new DoubleAnimation(1, 1.08, half) { AutoReverse = true, EasingFunction = ease });
+            var sx = Loop(new DoubleAnimation(1, 1.04, half) { AutoReverse = true, EasingFunction = ease });
+            var arm = Loop(new DoubleAnimation(-10, 12, half) { AutoReverse = true, EasingFunction = ease });
             sy.Completed += (s, e) => BreatheCycle();
             _scale.BeginAnimation(ScaleTransform.ScaleXProperty, sx);
             _scale.BeginAnimation(ScaleTransform.ScaleYProperty, sy);
@@ -226,10 +226,10 @@ namespace ClaudeNotch
         {
             var ease = new SineEase { EasingMode = EasingMode.EaseInOut };
             var delay = TimeSpan.FromMilliseconds(Rng.Next(0, 1000));
-            _shift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, -2, Ms(1600))
-                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease, BeginTime = delay });
-            _tilt.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(-2, 2, Ms(1600))
-                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease, BeginTime = delay });
+            _shift.BeginAnimation(TranslateTransform.YProperty, Loop(new DoubleAnimation(0, -2, Ms(1600))
+                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease, BeginTime = delay }));
+            _tilt.BeginAnimation(RotateTransform.AngleProperty, Loop(new DoubleAnimation(-2, 2, Ms(1600))
+                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease, BeginTime = delay }));
         }
 
         // ---- Pret : un saut, une seule fois (tassement, montee -6 u, reception, repos)
@@ -288,6 +288,11 @@ namespace ClaudeNotch
             if (ms <= 0) { el.BeginAnimation(OpacityProperty, null); el.Opacity = to; return; }
             el.BeginAnimation(OpacityProperty, new DoubleAnimation(to, Ms(ms)));
         }
+
+        // Animations en boucle, lentes et de quelques pixels : pas besoin de 60 images/s.
+        // Bip : 15 (son flottement fait 1 px a 16 px) ; l'eclat de l'encoche : 30, sinon
+        // son balayage saccade. Les transitions courtes restent a 60.
+        public static DoubleAnimation Loop(DoubleAnimation a, int fps = 15) { Timeline.SetDesiredFrameRate(a, fps); return a; }
 
         static Duration Ms(double ms) { return new Duration(TimeSpan.FromMilliseconds(ms)); }
         static KeyTime Kt(int ms) { return KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(ms)); }

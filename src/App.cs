@@ -64,6 +64,9 @@ namespace ClaudeNotch
             {
                 if (!isNew) return 0;
 
+                // Rendu logiciel : pour une si petite fenetre, le peripherique Direct3D (et le
+                // pilote graphique charge avec lui) coutait ~200 Mo et ~76 threads pour rien.
+                System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
                 var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
                 app.DispatcherUnhandledException += (s, e) =>
                 {

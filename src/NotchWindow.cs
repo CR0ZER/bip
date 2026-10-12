@@ -51,6 +51,7 @@ namespace ClaudeNotch
         const double EXP_W = 440, EXP_PAD = 12;
         const double SHOULDER = 8;
         const double WIN_W = EXP_W + 2 * SHOULDER + 80;   // marge pour l'ombre portee
+        const double WIN_MARGIN = 44;                     // sous l'encoche : ombre portee (12 + 28)
 
         // ---- temps (tokens.json -> motion.notchTransform)
         static readonly TimeSpan HOVER_OPEN = TimeSpan.FromMilliseconds(200);
@@ -110,6 +111,7 @@ namespace ClaudeNotch
         DateTime _expandedAt = DateTime.MinValue, _layoutAt = DateTime.MinValue, _peekUntil = DateTime.MinValue, _lastFlash = DateTime.MinValue;
         string _rowSig = "", _panelSig = "";
         int _anim;   // jeton : une transformation plus recente annule la fin d'une ancienne
+        DateTime _animUntil = DateTime.MinValue;   // fin de la transformation en cours
 
         // ------------------------------------------------------------ construction
 
@@ -126,7 +128,7 @@ namespace ClaudeNotch
             Foreground = Ink;
             Title = "ClaudeNotch";
             Width = WIN_W;
-            Height = SystemParameters.PrimaryScreenHeight * 0.9;
+            Height = LINE_H + WIN_MARGIN;
             Top = 0;
             Left = (SystemParameters.PrimaryScreenWidth - WIN_W) / 2;
 
@@ -184,9 +186,9 @@ namespace ClaudeNotch
                 p => Dispatcher.BeginInvoke((Action)(() => { _pending.Remove(p); Refresh(); })),
                 Program.Log).Start();
 
-            Every(300, Refresh);
-            Every(30, Track);
-            Every(1000, () => { foreach (var t in _tickers) t(); KeepOnTop(); CheckFullScreen(); Escalate(); });
+            Every(500, Refresh);
+            Every(50, Track);
+            Every(1000, () => { foreach (var t in _tickers) t(); KeepOnTop(); CheckFullScreen(); Escalate(); FitWindow(); });
 
             Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (s, e) => Dispatcher.BeginInvoke((Action)Place);
 
@@ -224,7 +226,6 @@ namespace ClaudeNotch
 
         void Place()
         {
-            Height = SystemParameters.PrimaryScreenHeight * 0.9;
             Left = (SystemParameters.PrimaryScreenWidth - WIN_W) / 2;
             Top = 0;
             KeepOnTop();
@@ -548,6 +549,7 @@ namespace ClaudeNotch
 
         void Resize(double w, double h, int ms, IEasingFunction ease = null)
         {
+            Room(h, ms);
             if (ease == null) ease = new CubicEase { EasingMode = EasingMode.EaseOut };
             var d = TimeSpan.FromMilliseconds(ms);
             _shape.BeginAnimation(WidthProperty, new DoubleAnimation(w, d) { EasingFunction = ease });
@@ -557,12 +559,30 @@ namespace ClaudeNotch
         // Fermeture : courbe 0.4,0 0.2,1 (KeySpline), sans rebond.
         void ResizeSpline(double w, double h, int ms, int delayMs)
         {
+            Room(h, ms + delayMs);
             foreach (var pair in new[] { Tuple.Create(WidthProperty, w), Tuple.Create(HeightProperty, h) })
             {
                 var a = new DoubleAnimationUsingKeyFrames { BeginTime = TimeSpan.FromMilliseconds(delayMs) };
                 a.KeyFrames.Add(new SplineDoubleKeyFrame(pair.Item2, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(ms)), new KeySpline(0.4, 0, 0.2, 1)));
                 _shape.BeginAnimation(pair.Item1, a);
             }
+        }
+
+        // La fenetre est transparente et redessinee a chaque image : sa surface fait le
+        // cout. Elle grandit juste avant que l'encoche grandisse...
+        void Room(double targetH, int ms)
+        {
+            _animUntil = DateTime.Now.AddMilliseconds(ms + 100);
+            double need = Math.Max(targetH, _shape.ActualHeight) + WIN_MARGIN;
+            if (need > Height) Height = need;
+        }
+
+        // ...et se resserre une fois la transformation finie.
+        void FitWindow()
+        {
+            if (DateTime.Now < _animUntil) return;
+            double need = _shape.ActualHeight + WIN_MARGIN;
+            if (Height > need + 1) Height = need;
         }
 
         static void FadeTo(UIElement el, double to, int ms, int delayMs)
@@ -601,7 +621,7 @@ namespace ClaudeNotch
             }
             g.Freeze();
             _shape.Clip = g;
-            if (Math.Abs(s.Width - _glowForWidth) > 0.5) StartGlow(s.Width);
+            if (_glowOn && Math.Abs(s.Width - _glowForWidth) > 0.5) StartGlow(s.Width);
         }
 
         double ExpandedHeight()
@@ -619,7 +639,11 @@ namespace ClaudeNotch
             bool any = _views.Any(v => v.State == St.Waiting);
             if (any == _glowOn) return;
             _glowOn = any;
-            _glow.BeginAnimation(OpacityProperty, new DoubleAnimation(any ? 1 : 0, TimeSpan.FromMilliseconds(300)));
+            var fade = new DoubleAnimation(any ? 1 : 0, TimeSpan.FromMilliseconds(300));
+            if (any) StartGlow(_shape.ActualWidth);
+            // Plus personne n'attend : le balayage s'arrete une fois le fondu fini.
+            else fade.Completed += (s, e) => { if (!_glowOn) { _glowX.BeginAnimation(TranslateTransform.XProperty, null); _glowForWidth = -1; } };
+            _glow.BeginAnimation(OpacityProperty, fade);
         }
 
         // 40 % de la largeur, balaie de gauche a droite en 2,4 s, lineaire, en boucle.
@@ -627,8 +651,8 @@ namespace ClaudeNotch
         {
             _glowForWidth = width;
             _glow.Width = width * 0.4;
-            _glowX.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(-width * 0.4, width, TimeSpan.FromMilliseconds(2400))
-                { RepeatBehavior = RepeatBehavior.Forever });
+            _glowX.BeginAnimation(TranslateTransform.XProperty, Bip.Loop(new DoubleAnimation(-width * 0.4, width, TimeSpan.FromMilliseconds(2400))
+                { RepeatBehavior = RepeatBehavior.Forever }, 30));
         }
 
         // Respiration geree par Bip ; au-dela de 5 min d'attente, la fenetre Claude clignote.

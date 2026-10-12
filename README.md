@@ -42,8 +42,14 @@ session Claude Code y est représentée par **Bip**, la mascotte (kit complet da
   réponse (seul moment où l'encoche prend le clavier).
 - **Répondre dans Claude** : rend la main ; Claude affiche sa demande habituelle.
 - **Clic** sur une ligne de session : met Claude au premier plan.
-- **Clic droit** (encoche dépliée) : clignotement de la fenêtre Claude après
-  5 min d'attente, dossier d'état, purge, Quitter.
+- **Encoche vide survolée** : Bip se réveille et salue ; un clic sur lui le fait
+  réagir (saut, clignement, signe). Dessous : les 3 dernières sessions terminées
+  et le bilan du jour (sessions, temps de travail, réponses données depuis
+  l'encoche). Un clic ailleurs sur l'encoche vide ouvre Claude.
+- **Ne pas déranger** (bouton de l'encoche vide ou clic droit) : pendant 1 h,
+  ni entrouverture, ni éclat, ni clignotement de Claude ; les Bip restent visibles.
+- **Clic droit** (encoche dépliée) : ne pas déranger, clignotement de la fenêtre
+  Claude après 5 min d'attente, dossier d'état, purge, Quitter.
 - Aucun son.
 
 Si l'encoche est fermée ou plante, les hooks rendent la main tout de suite et
@@ -59,3 +65,4 @@ l'encoche avant : un exe qui tourne est verrouillé.
 - `ClaudeNotch.exe --dump-plan` : sessions lues et ce que l'encoche afficherait.
 - `notch.log` : erreurs de l'encoche.
 - `state\` : un fichier par session (`état|dossier|pid`).
+- `journal\` : un fichier par jour pour le bilan, gardé 7 jours.

@@ -136,13 +136,7 @@ namespace ClaudeNotch
 
         public static Dictionary<string, object> Obj(object o) { return o as Dictionary<string, object>; }
 
-        public static object[] Arr(object o)
-        {
-            var a = o as object[];
-            if (a != null) return a;
-            var l = o as ArrayList;
-            return l != null ? l.ToArray() : null;
-        }
+        public static object[] Arr(object o) { return o as object[]; }
 
         public static string Str(Dictionary<string, object> d, string key)
         {

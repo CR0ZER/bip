@@ -50,6 +50,8 @@ namespace ClaudeNotch
 
     static class Audit
     {
+        public const int KeepDays = 90;   // conservation du journal, et periode du rapport
+
         // Outils de lecture ou internes : enregistres, mais masques par defaut dans le rapport.
         public static readonly HashSet<string> Quiet = new HashSet<string>
             { "Read", "Grep", "Glob", "LS", "TodoWrite", "AskUserQuestion", "ExitPlanMode", "NotebookRead" };

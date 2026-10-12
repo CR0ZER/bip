@@ -20,7 +20,6 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
 using ClaudeNotch;
 
@@ -84,14 +83,6 @@ static class NotchHook
         catch { return ""; }
     }
 
-    // Champ texte de premier niveau, sans dependance JSON.
-    static string JsonField(string json, string name)
-    {
-        var m = Regex.Match(json, "\"" + name + "\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
-        if (!m.Success) return null;
-        try { return Regex.Unescape(m.Groups[1].Value); } catch { return null; }
-    }
-
     static int Main(string[] args)
     {
         try
@@ -100,10 +91,13 @@ static class NotchHook
             DateTime started = Process.GetCurrentProcess().StartTime;
             string mode = args.Length > 0 ? args[0] : "state";
             string input = ReadStdin();
+            // JSON illisible : d reste null, les variables d'environnement prennent le relais.
+            Dictionary<string, object> d = null;
+            try { d = Json.Obj(Json.Parse(input)); } catch { }
 
-            string id = JsonField(input, "session_id");
+            string id = Json.Str(d, "session_id");
             if (string.IsNullOrEmpty(id)) id = Environment.GetEnvironmentVariable("CLAUDE_CODE_SESSION_ID");
-            string dir = JsonField(input, "cwd");
+            string dir = Json.Str(d, "cwd");
             if (string.IsNullOrEmpty(dir)) dir = Environment.GetEnvironmentVariable("CLAUDE_PROJECT_DIR") ?? "";
 
             if (string.IsNullOrEmpty(id))
@@ -114,7 +108,7 @@ static class NotchHook
             }
             if (string.IsNullOrEmpty(id)) id = "session";
 
-            string evt = JsonField(input, "hook_event_name") ?? "";
+            string evt = Json.Str(d, "hook_event_name") ?? "";
             // Racine du projet (les regles "ce projet" y sont ecrites) ; dir peut etre un sous-dossier.
             string proj = Environment.GetEnvironmentVariable("CLAUDE_PROJECT_DIR");
             if (string.IsNullOrEmpty(proj)) proj = dir;
@@ -123,12 +117,12 @@ static class NotchHook
             {
                 // Etat et audit independants : l'echec de l'un ne prive pas l'autre.
                 try { WriteState(id, args.Length > 1 ? args[1] : "ready", dir, started); } catch { }
-                if (evt == "PreToolUse" || evt == "PostToolUse" || evt == "PostToolUseFailure") AuditTool(evt, input, id, dir, proj);
+                if (evt == "PreToolUse" || evt == "PostToolUse" || evt == "PostToolUseFailure") AuditTool(evt, d, id, dir, proj);
                 return 0;
             }
             if (mode == "audit")
             {
-                AuditTool(evt, input, id, dir, proj);
+                AuditTool(evt, d, id, dir, proj);
                 return 0;
             }
 
@@ -136,10 +130,10 @@ static class NotchHook
             {
                 // Hors perimetre de l'encoche : validation de plan, et les questions qui
                 // repassent par PermissionRequest apres "Repondre dans Claude".
-                string tool = JsonField(input, "tool_name") ?? "";
+                string tool = Json.Str(d, "tool_name") ?? "";
                 if (mode == "permission" && (tool == "ExitPlanMode" || tool == "AskUserQuestion")) return 0;
 
-                if (mode == "permission") AuditTool("PermissionRequest", input, id, dir, proj);
+                if (mode == "permission") AuditTool("PermissionRequest", d, id, dir, proj);
                 string reply = Relay(mode, WithProject(input, proj));
                 if (!string.IsNullOrEmpty(reply))
                 {
@@ -147,7 +141,7 @@ static class NotchHook
                     var bytes = new UTF8Encoding(false).GetBytes(reply);
                     using (var o = Console.OpenStandardOutput()) o.Write(bytes, 0, bytes.Length);
                 }
-                if (mode == "permission") AuditDecision(reply, input, id);
+                if (mode == "permission") AuditDecision(reply, d, id);
                 // Repondu : la session repart. Sinon Claude pose la question lui-meme et la
                 // session attend l'utilisateur. Horodatage "maintenant" : suit le busy du PreToolUse.
                 WriteState(id, string.IsNullOrEmpty(reply) ? "waiting" : "busy", dir, DateTime.Now);
@@ -168,7 +162,7 @@ static class NotchHook
         return "{\"bip_proj\":" + Json.Write(proj) + "," + t.Substring(1);
     }
 
-    static void AuditTool(string evt, string input, string id, string dir, string proj)
+    static void AuditTool(string evt, Dictionary<string, object> d, string id, string dir, string proj)
     {
         try
         {
@@ -182,7 +176,6 @@ static class NotchHook
                 case "PermissionDenied":   ev = "refus-auto"; break;
                 default: return;
             }
-            var d = Json.Obj(Json.Parse(input));
             if (d == null) return;
             string tool = Json.Str(d, "tool_name") ?? "";
             var fields = new Dictionary<string, object>
@@ -204,11 +197,10 @@ static class NotchHook
     }
 
     // Reponse de l'encoche : autorise / toujours / refuse ; vide = la fenetre Claude decide.
-    static void AuditDecision(string reply, string input, string id)
+    static void AuditDecision(string reply, Dictionary<string, object> d, string id)
     {
         try
         {
-            var d = Json.Obj(Json.Parse(input));
             if (d == null) return;
             string tool = Json.Str(d, "tool_name") ?? "";
             string dec = string.IsNullOrEmpty(reply) ? "claude"

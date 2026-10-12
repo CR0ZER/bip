@@ -61,7 +61,7 @@ namespace ClaudeNotch
                     }
                     else if (cmd == "--audit-report")
                     {
-                        var path = Report.Generate(new Config(Path.Combine(Root, "config.txt")).AuditDays);
+                        var path = Report.Generate(Audit.KeepDays);
                         Console.WriteLine("Rapport : " + path);
                         if (!args.Contains("--no-open")) Process.Start(path);
                     }

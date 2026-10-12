@@ -208,7 +208,7 @@ namespace ClaudeNotch
             Directory.CreateDirectory(Program.StateDir);
             Sessions.Purge(Program.StateDir);
             Journal.Purge();
-            Audit.Purge(Program.Root, _cfg.AuditDays);
+            Audit.Purge(Program.Root, Audit.KeepDays);
 
             new PipeServer(
                 p => Dispatcher.BeginInvoke((Action)(() => { _pending.Add(p); Refresh(); Peek(p); })),
@@ -1086,8 +1086,7 @@ namespace ClaudeNotch
             p.Children.Add(Section("Traçabilité"));
             p.Children.Add(Link("Journal d'audit", "ce que les agents ont fait, et qui l'a autorisé", "↗", () =>
             {
-                int days = _cfg.AuditDays;
-                System.Threading.Tasks.Task.Run(() => Report.Open(days));
+                System.Threading.Tasks.Task.Run(() => Report.Open(Audit.KeepDays));
             }));
 
             var rules = Rules.Created();

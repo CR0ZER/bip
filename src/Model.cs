@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -81,7 +80,6 @@ namespace ClaudeNotch
         public DateTime DndUntil = DateTime.MinValue;   // "ne pas deranger" jusqu'a cette heure
         public bool Dnd { get { return DateTime.Now < DndUntil; } }
         public bool AutoDnd = true;      // sourdine automatique pendant les appels
-        public int AuditDays = 90;       // conservation du journal d'audit
 
         public Config(string path)
         {
@@ -97,7 +95,6 @@ namespace ClaudeNotch
                     if (k == "flash") Flash = v != "0";
                     else if (k == "dnd") { long t; if (long.TryParse(v, out t)) DndUntil = new DateTime(t); }
                     else if (k == "autodnd") AutoDnd = v != "0";
-                    else if (k == "audit_days") { int n; if (int.TryParse(v, out n) && n > 0) AuditDays = n; }
                 }
             }
             catch { }
@@ -109,8 +106,7 @@ namespace ClaudeNotch
             {
                 File.WriteAllText(_path, "flash=" + (Flash ? "1" : "0") + Environment.NewLine +
                                          "dnd=" + DndUntil.Ticks + Environment.NewLine +
-                                         "autodnd=" + (AutoDnd ? "1" : "0") + Environment.NewLine +
-                                         "audit_days=" + AuditDays + Environment.NewLine);
+                                         "autodnd=" + (AutoDnd ? "1" : "0") + Environment.NewLine);
             }
             catch { }
         }
@@ -255,13 +251,13 @@ namespace ClaudeNotch
                         // Preuve de vie : bip.exe, tant que la commande tourne. Une fois finie,
                         // elle reste affichee 4 min (succes) ou 10 min (echec).
                         var age = DateTime.Now - since;
-                        if (st == St.Busy && pid > 0 && !PidAlive(pid, hasStart ? start : DateTime.MinValue)) st = St.Stale;
+                        if (st == St.Busy && pid > 0 && !Alive(pid, null, hasStart ? start : DateTime.MinValue)) st = St.Stale;
                         else if (st == St.Ready && age > STALE_READY) st = St.Stale;
                         else if (st == St.Error && age > STALE_RUN_ERROR) st = St.Stale;
                         // Commande effacee de l'encoche : son fichier n'a plus d'usage.
                         if (st == St.Stale) { try { File.Delete(f); } catch { } continue; }
                     }
-                    else if (pid > 0 && !ClaudeAlive(pid)) st = St.Stale;
+                    else if (pid > 0 && !Alive(pid, "claude", DateTime.MinValue)) st = St.Stale;
                     else
                     {
                         var age = DateTime.Now - since;
@@ -322,41 +318,22 @@ namespace ClaudeNotch
             catch { }
         }
 
-        // Seul "aucun processus avec ce pid" prouve la mort ; un refus d'acces (processus
-        // eleve) n'en est pas une. Un pid reutilise par un autre programme se voit a son
-        // heure de lancement.
-        static bool PidAlive(int pid, DateTime start)
-        {
-            try
-            {
-                using (var p = Process.GetProcessById(pid))
-                {
-                    try
-                    {
-                        if (p.HasExited) return false;
-                        return start == DateTime.MinValue || Math.Abs((p.StartTime - start).TotalSeconds) < 2;
-                    }
-                    catch (Win32Exception) { return true; }
-                    catch (InvalidOperationException) { return false; }
-                }
-            }
-            catch (ArgumentException) { return false; }
-            catch { return true; }
-        }
-
         [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
         static extern IntPtr OpenProcess(int access, bool inherit, int pid);
         [System.Runtime.InteropServices.DllImport("kernel32.dll")]
         static extern bool GetExitCodeProcess(IntPtr h, out int code);
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        static extern bool GetProcessTimes(IntPtr h, out long creation, out long exit, out long kernel, out long user);
         [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
         static extern bool QueryFullProcessImageName(IntPtr h, int flags, StringBuilder name, ref int size);
         [System.Runtime.InteropServices.DllImport("kernel32.dll")]
         static extern bool CloseHandle(IntPtr h);
 
-        // Interroge directement le processus (quelques microsecondes) au lieu d'enumerer
-        // tous ceux du poste (~9 ms). Vivant = existe, pas termine, et s'appelle claude.exe
-        // (un pid reutilise par un autre programme ne compte pas). Dans le doute : vivant.
-        static bool ClaudeAlive(int pid)
+        // Interroge directement le processus (quelques microsecondes, sans enumerer tout le
+        // poste). Seul "aucun processus avec ce pid" prouve la mort ; dans le doute (acces
+        // refuse a un processus eleve...), vivant. Un pid reutilise par un autre programme se
+        // voit a son nom (name) ou a son heure de lancement (start), quand on les connait.
+        static bool Alive(int pid, string name, DateTime start)
         {
             const int QUERY_LIMITED = 0x1000, STILL_ACTIVE = 259, ERROR_INVALID_PARAMETER = 87;
             var h = OpenProcess(QUERY_LIMITED, false, pid);
@@ -364,11 +341,15 @@ namespace ClaudeNotch
             try
             {
                 int code;
+                long created, x, k, u;
                 if (GetExitCodeProcess(h, out code) && code != STILL_ACTIVE) return false;
+                if (start != DateTime.MinValue && GetProcessTimes(h, out created, out x, out k, out u)
+                    && Math.Abs((DateTime.FromFileTime(created) - start).TotalSeconds) >= 2) return false;
+                if (name == null) return true;
                 var sb = new StringBuilder(1024);
                 int size = sb.Capacity;
                 if (!QueryFullProcessImageName(h, 0, sb, ref size)) return true;
-                return string.Equals(Path.GetFileNameWithoutExtension(sb.ToString()), "claude", StringComparison.OrdinalIgnoreCase);
+                return string.Equals(Path.GetFileNameWithoutExtension(sb.ToString()), name, StringComparison.OrdinalIgnoreCase);
             }
             finally { CloseHandle(h); }
         }

@@ -234,7 +234,7 @@ montrerait ; `notch.log` recueille les erreurs ; `journal\` garde 7 jours de bil
   pour agents de code sur macOS (licence MIT). Bip en reprend l'idée (un bloc noir qui se
   transforme, des réponses depuis l'encoche) ; le code, la mascotte et le design sont propres
   à ce projet.
-- **Mascotte et design** conçus avec Claude Design ; application développée avec Claude Code.
+- **Mascotte et design** conçus avec Claude Design.
 - Projet indépendant, non affilié à Anthropic. « Claude » et « Claude Code » sont des marques
   d'Anthropic.
 
@@ -463,7 +463,7 @@ would show; `notch.log` collects errors; `journal\` keeps 7 days of summaries.
 - **Inspired by [coucou](https://github.com/Louis-CFM/coucou)** by Louis-CFM, the companion notch
   for coding agents on macOS (MIT licence). Bip borrows the idea (a black block that morphs,
   answering from the notch); the code, the mascot and the design are this project's own.
-- **Mascot and design** made with Claude Design; app built with Claude Code.
+- **Mascot and design** made with Claude Design.
 - Independent project, not affiliated with Anthropic. "Claude" and "Claude Code" are trademarks
   of Anthropic.
 

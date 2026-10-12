@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="design/bip-mascotte/svg/bip-pret.svg" width="96" alt="Bip">
+<img src="design/bip-mascotte/svg/bip-coucou.svg" width="96" alt="Bip fait coucou">
 
 # Bip
 
@@ -77,6 +77,9 @@ Le kit complet (SVG, PNG, valeurs de référence, aperçu animé) est dans [`des
 - **Escalade douce** : après 5 min d'attente, la fenêtre Claude clignote dans la barre des
   tâches (désactivable). Jamais de mise au premier plan forcée, aucun son.
 - **Invisible quand il le faut** : masquée pendant les applis en plein écran.
+- **Réglages dans l'encoche** : le bouton **☰** en haut à droite de l'encoche dépliée (ou un
+  clic droit) ajoute les réglages sous le contenu : ne pas déranger, sourdine pendant les
+  appels, clignotement, journal d'audit, règles créées par Bip, dossier d'état, quitter.
 
 ### Suivre une commande longue : `bip run`
 
@@ -87,6 +90,7 @@ bip run npm run build
 La commande tourne dans ton terminal, sortie et couleurs intactes, et apparaît dans l'encoche
 avec sa durée. À la fin, Bip s'entrouvre (« npm run build a fini · 4 min 12 s », ou en échec
 avec le code de retour). `bip` renvoie le code de la commande : il s'utilise dans un script.
+Une petite croix retire une commande de l'encoche (si elle tourne encore, elle continue).
 
 ### Journal d'audit
 
@@ -98,7 +102,7 @@ auto) et le résultat.
   adresses).
 - **Chaîne d'empreintes SHA-256** : une ligne modifiée ou supprimée après coup, ou une fin de
   journal tronquée, se voit. `ClaudeNotch.exe --verify-audit` la contrôle.
-- **Rapport** depuis le menu de l'encoche (« Journal d'audit… ») : une page autonome avec
+- **Rapport** depuis les réglages de l'encoche (☰ → « Journal d'audit ») : une page autonome avec
   filtres par période, projet, décision et texte, et export CSV.
 - Conservé 90 jours, sur le poste uniquement.
 
@@ -108,7 +112,7 @@ Après **5 autorisations de la même commande dans un projet** (`npm test`, `pyt
 propose d'en faire une règle Claude Code, en affichant la règle exacte : **Ce projet** (écrite
 dans `.claude/settings.local.json`, non versionné), **Partout**, ou **Non, ne plus proposer**.
 Jamais de suggestion pour une commande composée, risquée (suppression, `git push`, réseau,
-interpréteur…) ou trop large. Les règles créées se retirent d'un clic depuis le menu, et chaque
+interpréteur…) ou trop large. Les règles créées se retirent d'un clic depuis les réglages (☰), et chaque
 ajout ou retrait est inscrit au journal d'audit.
 
 ## Installation
@@ -176,16 +180,19 @@ flowchart LR
 
 ## Performances
 
-Mesuré sur un poste de travail, sur 20 s :
+Mesuré sur un poste de travail (v0.2) :
 
 | Situation | Processeur | Mémoire |
 |---|---|---|
-| Une session au travail (Bip animé) | ~4,7 % d'un cœur | ~68 Mo |
-| Aucun Bip animé | ~0,7 % d'un cœur | ~69 Mo |
-| `NotchHook.exe`, par appel d'outil | ~70 ms, en arrière-plan | — |
+| Une session au travail (Bip animé) | ~2,7 % d'un cœur | ~70 Mo |
+| Aucun Bip animé | < 1 % d'un cœur | ~70 Mo |
+| `NotchHook.exe`, par appel d'outil, journal d'audit compris | ~145 ms, en arrière-plan | — |
+| Relecture du journal d'audit après un ajout, grosse journée (10 000 évènements) | ~15 ms | — |
 
-Rendu logiciel, animations en boucle à 15–30 images/s, éclat seulement quand quelqu'un attend,
-fenêtre à la taille de l'encoche. Le détail des mesures est dans [`docs/CONCEPTION.md`](docs/CONCEPTION.md).
+Rendu logiciel ; animations en boucle à 8 images/s dans l'encoche repliée, 15 dépliée ; éclat
+seulement quand quelqu'un attend ; fenêtre à la taille de l'encoche. Le hook lit le JSON avec
+un lecteur maison (pas de bibliothèque .NET à charger) et le journal n'est relu que pour ses
+nouvelles lignes. La durée du hook est surtout celle du démarrage de .NET (~100 ms sur ce poste). Le détail des mesures est dans [`docs/CONCEPTION.md`](docs/CONCEPTION.md).
 
 ## Structure
 
@@ -294,6 +301,9 @@ The full kit (SVG, PNG, reference values, animated preview) is in [`design/bip-m
 - **Gentle escalation**: after 5 min of waiting, the Claude window flashes in the taskbar
   (can be turned off). Never forced to the foreground, no sound at all.
 - **Out of the way when needed**: hidden while a full-screen app is running.
+- **Settings inside the notch**: the **☰** button at the top right of the open notch (or a
+  right-click) adds the settings below the content: do not disturb, mute during calls,
+  flashing, audit log, rules created by Bip, state folder, quit.
 
 #### Follow a long command: `bip run`
 
@@ -303,7 +313,8 @@ bip run npm run build
 
 The command runs in your terminal, output and colours untouched, and shows up in the notch with
 its duration. When it ends, Bip peeks open ("npm run build a fini · 4 min 12 s", or the exit
-code on failure). `bip` returns the command's exit code, so it works in scripts.
+code on failure). `bip` returns the command's exit code, so it works in scripts. A small cross
+removes a command from the notch (if it is still running, it keeps running).
 
 #### Audit log
 
@@ -313,7 +324,7 @@ who allowed it (you in Bip, you in Claude, a rule, auto mode) and the outcome.
 - **Secrets masked before writing** (tokens, API keys, passwords, credentials in URLs).
 - **SHA-256 hash chain**: a line edited or deleted afterwards, or a truncated log, shows up.
   `ClaudeNotch.exe --verify-audit` checks it.
-- **Report** from the notch menu ("Journal d'audit…"): a self-contained page with filters by
+- **Report** from the notch settings (☰ → "Journal d'audit"): a self-contained page with filters by
   period, project, decision and text, plus CSV export.
 - Kept 90 days, on the machine only.
 
@@ -323,7 +334,7 @@ After **5 approvals of the same command in a project** (`npm test`, `pytest`…)
 turn it into a Claude Code rule and shows the exact rule: **this project** (written to the
 unversioned `.claude/settings.local.json`), **everywhere**, or **never suggest again**. Never for
 compound, risky (deletion, `git push`, network, interpreters…) or overly broad commands. Rules
-created by Bip can be removed in one click from the menu, and every change is written to the
+created by Bip can be removed in one click from the settings (☰), and every change is written to the
 audit log.
 
 ### Installation
@@ -390,16 +401,19 @@ flowchart LR
 
 ### Performance
 
-Measured on a work machine, over 20 s:
+Measured on a work machine (v0.2):
 
 | Situation | CPU | Memory |
 |---|---|---|
-| One session working (Bip animated) | ~4.7 % of one core | ~68 MB |
-| No animated Bip | ~0.7 % of one core | ~69 MB |
-| `NotchHook.exe`, per tool call | ~70 ms, in the background | — |
+| One session working (Bip animated) | ~2.7 % of one core | ~70 MB |
+| No animated Bip | < 1 % of one core | ~70 MB |
+| `NotchHook.exe`, per tool call, audit log included | ~145 ms, in the background | — |
+| Re-reading the audit log after a new line, busy day (10,000 events) | ~15 ms | — |
 
-Software rendering, looping animations at 15–30 fps, glow only while someone is waiting, window
-sized to the notch. Measurement details are in [`docs/CONCEPTION.md`](docs/CONCEPTION.md) (in French).
+Software rendering; looping animations at 8 fps in the collapsed notch, 15 when open; glow only
+while someone is waiting; window sized to the notch. The hook parses JSON with a built-in reader
+(no .NET library to load) and the log is only re-read for its new lines. Most of the hook's time
+is .NET start-up (~100 ms on this machine). Measurement details are in [`docs/CONCEPTION.md`](docs/CONCEPTION.md) (in French).
 
 ### Layout
 

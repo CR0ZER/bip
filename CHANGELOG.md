@@ -9,10 +9,12 @@ Bip suit aussi tes commandes, se fait discret pendant tes appels et garde la tra
 ### Nouveautés
 
 - **`bip run <commande>`** : la commande tourne dans ton terminal et apparaît dans l'encoche ; Bip s'entrouvre à la fin avec la durée, ou le code de retour en cas d'échec. Le code de la commande est renvoyé.
-- **Sourdine automatique pendant les appels** (Teams, Zoom, Meet, Slack, Discord, Webex…), détectée par l'utilisation du micro : bref signal au début, résumé de ce qui s'est passé à la fin. Désactivable dans le menu.
+- **Sourdine automatique pendant les appels** (Teams, Zoom, Meet, Slack, Discord, Webex…), détectée par l'utilisation du micro : bref signal au début, résumé de ce qui s'est passé à la fin. Désactivable dans les réglages.
 - **Journal d'audit** de toutes les actions des agents : outil, objet, qui a autorisé, résultat. Secrets masqués avant écriture, chaîne d'empreintes SHA-256, 90 jours de conservation, vérification par `ClaudeNotch.exe --verify-audit`.
-- **Rapport d'audit** depuis le menu : page autonome avec filtres et export CSV.
-- **Règles suggérées** après 5 autorisations de la même commande dans un projet, avec la règle exacte affichée ; portée « ce projet » ou « partout », retrait d'un clic depuis le menu.
+- **Rapport d'audit** depuis les réglages : page autonome avec filtres et export CSV.
+- **Règles suggérées** après 5 autorisations de la même commande dans un projet, avec la règle exacte affichée ; portée « ce projet » ou « partout », retrait d'un clic depuis les réglages.
+- **Réglages intégrés à l'encoche** : bouton ☰ en haut à droite (ou clic droit), à la place du menu contextuel qui passait sous l'encoche.
+- **Croix** pour retirer une commande `bip run` de l'encoche.
 
 ### Sécurité
 
@@ -20,9 +22,15 @@ Bip suit aussi tes commandes, se fait discret pendant tes appels et garde la tra
 - Fichier de réglages refusé s'il est un lien ; sauvegarde datée avant chaque modification.
 - Export CSV protégé contre les formules.
 
+### Performances
+
+- Encoche : ~2,7 % d'un cœur avec une session au travail (contre ~4,7 % en 0.1.0) : Bips de l'encoche repliée à 8 images/s, vérification directe du processus Claude, souris suivie moins souvent quand l'encoche est repliée.
+- Hook : −33 % par appel malgré le journal d'audit (lecteur JSON maison, empreinte par le fournisseur Windows).
+- Journal d'audit relu de façon incrémentale : ~15 ms au lieu de ~250 ms sur une grosse journée.
+
 ### English summary
 
-`bip run` to follow long commands in the notch, automatic mute during calls with an end-of-call recap, a tamper-evident audit log of every agent action with secret masking and an HTML/CSV report, and suggested Claude Code rules after repeated approvals.
+`bip run` to follow long commands in the notch, automatic mute during calls with an end-of-call recap, a tamper-evident audit log of every agent action with secret masking and an HTML/CSV report, suggested Claude Code rules after repeated approvals, and settings built into the notch. Lighter too: ~2.7 % of one core with a session working, hook 33 % faster.
 
 ## [0.1.0] - 2026-10-12
 

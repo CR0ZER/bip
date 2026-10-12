@@ -18,7 +18,8 @@ using System.Windows.Threading;
 
 namespace ClaudeNotch
 {
-    enum BipState { Waiting, Running, Ready, Error, Idle }
+    // Neutral : hors kit, Bip seul dans l'encoche vide, qui parle a l'utilisateur.
+    enum BipState { Waiting, Running, Ready, Error, Idle, Neutral }
 
     class Bip : Viewbox
     {
@@ -29,6 +30,7 @@ namespace ClaudeNotch
             { BipState.Ready,   Hex(0x3FD07F) },
             { BipState.Error,   Hex(0x8E96A3) },
             { BipState.Idle,    Hex(0x4A4A4E) },
+            { BipState.Neutral, Hex(0xDAD6CF) },   // blanc casse
         };
         static readonly Brush Face = Frozen(Hex(0x141414)), FaceIdle = Frozen(Hex(0x161616)), BadgeFill = Frozen(Hex(0xFFC93D));
         static readonly Random Rng = new Random();
@@ -130,7 +132,7 @@ namespace ClaudeNotch
             int face = animate ? 150 : 0;
             Fade(_faceWaiting, to == BipState.Waiting ? 1 : 0, face);
             Fade(_faceRunning, to == BipState.Running ? 1 : 0, face);
-            Fade(_faceReady, to == BipState.Ready ? 1 : 0, face);
+            Fade(_faceReady, to == BipState.Ready || to == BipState.Neutral ? 1 : 0, face);
             Fade(_faceError, to == BipState.Error ? 1 : 0, face);
             Fade(_faceIdle, to == BipState.Idle ? 1 : 0, face);
 
@@ -158,6 +160,7 @@ namespace ClaudeNotch
                     _waitTimer.Start();
                     break;
                 case BipState.Running:
+                case BipState.Neutral:
                     Float();
                     break;
                 case BipState.Ready:

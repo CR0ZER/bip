@@ -107,7 +107,7 @@ namespace ClaudeNotch
         // vivante resterait "en cours" indefiniment. Chaque outil reecrit l'etat.
         static readonly TimeSpan STALE_BUSY_ALIVE = TimeSpan.FromHours(1);
         static readonly TimeSpan STALE_WAITING = TimeSpan.FromHours(6);
-        static readonly TimeSpan STALE_READY   = TimeSpan.FromMinutes(10);
+        static readonly TimeSpan STALE_READY   = TimeSpan.FromMinutes(4);   // pret / au repos, puis le Bip s'efface
         static readonly TimeSpan PURGE_AGE     = TimeSpan.FromHours(12);
 
         // Ce qui merite une place dans l'encoche ("pret" s'efface au bout de 10 min).

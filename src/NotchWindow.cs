@@ -735,7 +735,7 @@ namespace ClaudeNotch
             var rows = _views.Where(v => v.Pending.Count == 0).OrderBy(v => v.State == St.Waiting ? 0 : 1).ThenBy(v => v.S.Order).ToList();
             for (int i = 0; i < rows.Count; i++) _content.Children.Add(Row(rows[i], i > 0));
             if (_views.Count == 0)
-                _content.Children.Add(new TextBlock { Text = "Aucune session active", Foreground = Muted, FontSize = 12, Margin = new Thickness(4, 6, 0, 6) });
+                _content.Children.Add(Greeting());
 
             foreach (var t in _tickers) t();
             _panelSig = sig;
@@ -762,6 +762,71 @@ namespace ClaudeNotch
                 foreach (FrameworkElement el in _content.Children) { el.BeginAnimation(OpacityProperty, null); el.Opacity = 1; el.RenderTransform = null; }
                 Resize(EXP_W, ExpandedHeight(), 220);
             }
+        }
+
+        // ------------------------------------------------------------ encoche vide : Bip parle
+
+        static readonly string[][] Lines =
+        {
+            new[] { "Tout est calme.", "Aucune session en cours : je veille." },
+            new[] { "Rien à signaler.", "Lance Claude, je m'occupe du reste." },
+            new[] { "Pas de session ouverte.", "Une pause café ? Je surveille." },
+            new[] { "Je suis là.", "Dès que Claude travaille, je te dis où il en est." },
+        };
+        static readonly Random Rng = new Random();
+        DispatcherTimer _typing;
+
+        // Bip se reveille (endormi -> blanc casse souriant) et parle dans une bulle,
+        // ecrite lettre par lettre.
+        FrameworkElement Greeting()
+        {
+            var hour = DateTime.Now.Hour;
+            var pick = Lines[Rng.Next(Lines.Length)];
+            string hello = hour < 12 ? "Bonjour ! " : hour < 18 ? "" : "Bonsoir ! ";
+            string first = hello + pick[0], second = pick[1];
+
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 6, 4, 6) };
+            var bip = new Bip { Width = 40, Height = 40, State = BipState.Idle, VerticalAlignment = VerticalAlignment.Center };
+            // Reveil : une fois affiche, il passe de l'etat endormi a l'etat neutre (250 ms).
+            bip.Loaded += (s, e) => Dispatcher.BeginInvoke((Action)(() => bip.State = BipState.Neutral), DispatcherPriority.Background);
+            row.Children.Add(bip);
+
+            var text = new TextBlock { FontSize = 13, LineHeight = 18, Foreground = Ink, TextWrapping = TextWrapping.Wrap, MaxWidth = EXP_W - 2 * EXP_PAD - 40 - 50 };
+            var r1 = new Run { FontWeight = FontWeights.SemiBold };
+            var r2 = new Run { Foreground = Muted };
+            text.Inlines.Add(r1);
+            text.Inlines.Add(new LineBreak());
+            text.Inlines.Add(r2);
+            // Hauteur fixee des le depart : la bulle ne grandit pas pendant l'ecriture.
+            r1.Text = first; r2.Text = second;
+            text.Measure(new Size(text.MaxWidth, double.PositiveInfinity));
+            text.Width = Math.Ceiling(text.DesiredSize.Width);
+            text.Height = text.DesiredSize.Height;
+            r1.Text = ""; r2.Text = "";
+
+            var bubble = new Border
+            {
+                Background = Card, CornerRadius = new CornerRadius(4, 14, 14, 14), Padding = new Thickness(12, 8, 12, 8),
+                Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Child = text
+            };
+            row.Children.Add(bubble);
+
+            // Ecriture lettre par lettre (30 ms), apres l'ouverture de l'encoche.
+            if (_typing != null) _typing.Stop();
+            int n = 0, total = first.Length + second.Length;
+            var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(30) };
+            var start = DateTime.Now.AddMilliseconds(350);
+            t.Tick += (s, e) =>
+            {
+                if (DateTime.Now < start) return;
+                n = Math.Min(total, n + 1);
+                r1.Text = first.Substring(0, Math.Min(n, first.Length));
+                r2.Text = n > first.Length ? second.Substring(0, n - first.Length) : "";
+                if (n >= total || _form != Form.Expanded) { t.Stop(); r1.Text = first; r2.Text = second; }
+            };
+            _typing = t;
+            t.Start();
+            return row;
         }
 
         // Ligne de session : 36 px, Bip 20 px, nom en Cascadia Mono, etat + duree a droite.

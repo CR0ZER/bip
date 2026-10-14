@@ -27,6 +27,8 @@ namespace ClaudeNotch
     {
         public DateTime T;
         public string Sess, Dir, Proj, Tool, Obj, Tuid, Mode, User, Host;   // Proj : racine du projet
+        public string Agent;        // sous-agent qui a fait l'action (null : l'agent principal)
+        public string Spawned;      // ligne de lancement d'un sous-agent : son identifiant
         public bool Asked;          // une permission a ete demandee
         public string Dec;          // allow / always / deny / claude (decision brute)
         public string Result;       // fait / echec / refus-auto
@@ -54,7 +56,7 @@ namespace ClaudeNotch
 
         // Outils de lecture ou internes : enregistres, mais masques par defaut dans le rapport.
         public static readonly HashSet<string> Quiet = new HashSet<string>
-            { "Read", "Grep", "Glob", "LS", "TodoWrite", "AskUserQuestion", "ExitPlanMode", "NotebookRead" };
+            { "Read", "Grep", "Glob", "LS", "TodoWrite", "AskUserQuestion", "ExitPlanMode", "NotebookRead", "SubagentHandback" };
 
         static string DirOf(string root) { return Path.Combine(root, "audit"); }
         static string FileOf(string root, DateTime d) { return Path.Combine(DirOf(root), d.ToString("yyyy-MM-dd") + ".jsonl"); }
@@ -112,7 +114,7 @@ namespace ClaudeNotch
         const string HeadKey = @"Software\Bip\Audit";
 
         // Une valeur par dossier d'installation : deux installations (ou les tests) ne se melangent pas.
-        static string HeadName(string root) { return "head-" + Sha(Path.GetFullPath(root).TrimEnd('\\').ToLowerInvariant()).Substring(0, 16); }
+        internal static string HeadName(string root) { return "head-" + Sha(Path.GetFullPath(root).TrimEnd('\\').ToLowerInvariant()).Substring(0, 16); }
 
         static void SaveHead(string root, string sha)
         {
@@ -212,7 +214,7 @@ namespace ClaudeNotch
                 case "Grep": s = Json.Str(input, "pattern") + (Json.Str(input, "path") != null ? "  (" + Json.Str(input, "path") + ")" : ""); break;
                 case "WebFetch": s = Json.Str(input, "url"); break;
                 case "WebSearch": s = Json.Str(input, "query"); break;
-                case "Task": s = Json.Str(input, "description"); break;
+                case "Task": case "Agent": s = Json.Str(input, "description"); break;
                 default: s = input == null || input.Count == 0 ? null : Json.Write(input); break;
             }
             s = Mask(s ?? "");
@@ -356,7 +358,7 @@ namespace ClaudeNotch
                 {
                     T = TimeOf(d), Sess = Json.Str(d, "sess"), Dir = Json.Str(d, "dir"), Proj = Json.Str(d, "proj") ?? Json.Str(d, "dir"), Tool = Json.Str(d, "tool"),
                     Obj = Json.Str(d, "obj"), Tuid = tuid, Mode = Json.Str(d, "mode"), User = Json.Str(d, "user"),
-                    Host = Json.Str(d, "host"), Rule = ev == "regle", Dec = ev == "regle" ? Json.Str(d, "dec") : null
+                    Host = Json.Str(d, "host"), Agent = Json.Str(d, "agent"), Rule = ev == "regle", Dec = ev == "regle" ? Json.Str(d, "dec") : null
                 };
                 rows.Add(r);
                 if (r.Rule) continue;
@@ -388,7 +390,10 @@ namespace ClaudeNotch
                 {
                     case "demande": row.Asked = true; break;
                     case "decision": row.Asked = true; row.Dec = Json.Str(d, "dec"); break;
-                    case "fait": case "echec": case "refus-auto": row.Result = ev; break;
+                    case "fait": case "echec": case "refus-auto":
+                        row.Result = ev;
+                        if (ev == "fait" && Json.Str(d, "spawn") != null) row.Spawned = Json.Str(d, "spawn");
+                        break;
                 }
             }
             foreach (var r in rows) Finish(r);

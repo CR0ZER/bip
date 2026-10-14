@@ -18,7 +18,7 @@ set "WPF=%FW%\WPF"
   /r:System.dll /r:System.Core.dll /r:System.Xaml.dll ^
   /r:"%WPF%\WindowsBase.dll" /r:"%WPF%\PresentationCore.dll" /r:"%WPF%\PresentationFramework.dll" ^
   "%~dp0src\App.cs" "%~dp0src\Json.cs" "%~dp0src\Model.cs" "%~dp0src\NotchWindow.cs" "%~dp0src\Bip.cs" "%~dp0src\Version.cs" ^
-  "%~dp0src\Audit.cs" "%~dp0src\Rules.cs" "%~dp0src\Report.cs"
+  "%~dp0src\Audit.cs" "%~dp0src\Rules.cs" "%~dp0src\Report.cs" "%~dp0src\Agents.cs"
 if errorlevel 1 (
   echo.
   echo Compilation de ClaudeNotch echouee.

@@ -119,6 +119,10 @@ namespace ClaudeNotch
         Pending _peekPending;                      // demande annoncee par l'entrouverture (ou null)
         // Appels : sourdine automatique tant qu'une appli d'appel utilise le micro.
         bool _inCall, _autoDnd, _autoSuppressed;
+        string _callApp;                           // application de l'appel en cours (Teams, Zoom...)
+        TextBlock _dndTag;                         // "☾ jusqu'a 10:30", en haut a gauche encoche depliee
+        Border _dndTagBox;
+        readonly Dictionary<string, DateTime> _turnStart = new Dictionary<string, DateTime>();
         // Commandes retirees a la main (croix) alors qu'elles tournent encore.
         readonly HashSet<string> _dismissed = new HashSet<string>();
         DateTime _callStart;
@@ -184,6 +188,14 @@ namespace ClaudeNotch
                                     ToolTip = "Réglages", Opacity = 0, Visibility = Visibility.Collapsed };
             Clickable(_menuBtn, ToggleSettings, () => true);
             _inner.Children.Add(_menuBtn);
+
+            // En miroir, en haut a gauche : "ne pas deranger" actif et pourquoi. Un clic la leve.
+            _dndTag = new TextBlock { FontSize = 11.5, Foreground = Muted, VerticalAlignment = VerticalAlignment.Center };
+            _dndTagBox = new Border { Height = 18, Padding = new Thickness(6, 0, 6, 0), CornerRadius = new CornerRadius(5), Background = Brushes.Transparent,
+                                      Child = _dndTag, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+                                      Margin = new Thickness(9, 3, 0, 0), ToolTip = "Lever « ne pas déranger »", Visibility = Visibility.Collapsed };
+            Clickable(_dndTagBox, ToggleDnd, () => true);
+            _inner.Children.Add(_dndTagBox);
 
             _shape.Child = _inner;
             _shape.Width = LINE_W;
@@ -405,9 +417,13 @@ namespace ClaudeNotch
                     _prev[s.Id] = s.State;
                     continue;
                 }
-                if (s.State == St.Busy && (!had || prev != St.Busy)) Journal.Add("travail", s.Id, s.Name);
-                if (had && prev == St.Busy && s.State != St.Busy) Journal.Add("pause", s.Id, s.Name);
-                if (had && prev != St.Ready && s.State == St.Ready) Journal.Add("termine", s.Id, s.Name);
+                if (s.State == St.Busy && (!had || prev != St.Busy))
+                {
+                    Journal.Add("travail", s.Id, s.Display);
+                    _turnStart[s.Id] = DateTime.Now;   // debut du tour : base du recap de fin de tour
+                }
+                if (had && prev == St.Busy && s.State != St.Busy) Journal.Add("pause", s.Id, s.Display);
+                if (had && prev != St.Ready && s.State == St.Ready) Journal.Add("termine", s.Id, s.Display);
                 _prev[s.Id] = s.State;
             }
             foreach (var id in _prev.Keys.Where(k => !seen.Contains(k)).ToList())
@@ -477,7 +493,7 @@ namespace ClaudeNotch
                 {
                     if (v.State == St.Waiting && b.State != BipState.Waiting) b.WaitingSince = v.Since;
                     b.State = BipOf(v.State);
-                    b.ToolTip = v.S.Name + " — " + States.Label(v.State);
+                    b.ToolTip = v.S.Display + " — " + States.Label(v.State);
                     continue;
                 }
                 if (b != null) { _bips.Children.Remove(b); _rowBips.Remove(v.S.Id); _leaving.Remove(v.S.Id); }
@@ -534,6 +550,7 @@ namespace ClaudeNotch
             if (f == from && f != Form.Expanded) return;
             _form = f;
             int token = ++_anim;
+            UpdateDndTag();
 
             SetClickThrough(f != Form.Expanded);
             // Souris suivie toutes les 50 ms quand l'encoche est ouverte (depart rapide),
@@ -551,7 +568,7 @@ namespace ClaudeNotch
                 _menuBtn.Visibility = Visibility.Visible;
                 FadeTo(_menuBtn, 1, 180, 250);
                 FadeTo(_row, 0, 100, 0);
-                FadeTo(_peek, 0, 100, 0);
+                HidePeek(token);
                 _scroll.Visibility = Visibility.Visible;
                 _scroll.BeginAnimation(OpacityProperty, null);
                 _scroll.Opacity = 1;
@@ -577,10 +594,19 @@ namespace ClaudeNotch
                 _menuBtn.Opacity = 0;
                 _menuBtn.Visibility = Visibility.Collapsed;
                 var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(100));
-                fade.Completed += (s, e) => { if (token == _anim) _scroll.Visibility = Visibility.Collapsed; };
+                fade.Completed += (s, e) =>
+                {
+                    if (token != _anim) return;
+                    // Panneau vide une fois cache : ses Bip s'arretent (sinon ils restent animes,
+                    // invisibles, et l'encoche consomme 2 a 3 fois plus). Rebati a l'ouverture.
+                    _scroll.Visibility = Visibility.Collapsed;
+                    _content.Children.Clear();
+                    _tickers.Clear();
+                    _panelSig = null;
+                };
                 _scroll.BeginAnimation(OpacityProperty, fade);
             }
-            FadeTo(_peek, 0, 100, 0);
+            HidePeek(token);
             double w = f == Form.Line ? LINE_W : CollapsedWidth(), h = f == Form.Line ? LINE_H : COL_H;
             _colW = f == Form.Collapsed ? w : -1;
             if (closing) ResizeSpline(w, h, 350, 60);
@@ -631,6 +657,14 @@ namespace ClaudeNotch
             if (DateTime.Now < _animUntil) return;
             double need = _shape.ActualHeight + WIN_MARGIN;
             if (Height > need + 1) Height = need;
+        }
+
+        // Efface l'entrouverture, puis la vide : son Bip s'arrete au lieu de rester anime, invisible.
+        void HidePeek(int token)
+        {
+            var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(100)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+            fade.Completed += (s, e) => { if (token == _anim && _form != Form.Peek) _peek.Children.Clear(); };
+            _peek.BeginAnimation(OpacityProperty, fade);
         }
 
         static void FadeTo(UIElement el, double to, int ms, int delayMs)
@@ -743,14 +777,16 @@ namespace ClaudeNotch
         {
             if (_form == Form.Expanded || p.Done || Quiet) return;
             var v = _views.FirstOrDefault(x => x.S.Id == p.SessionId);
-            string name = v != null ? v.S.Name : Session.NameOf(p.Cwd);
+            string name = v != null ? v.S.ShortName : Session.NameOf(p.Cwd);
 
             _peek.Children.Clear();
             var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 18, 0) };
             var bip = new Bip { Width = 40, Height = 40, State = BipState.Waiting, VerticalAlignment = VerticalAlignment.Center };
             row.Children.Add(bip);
             var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
-            var line = new TextBlock { FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Ink, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = PEEK_W - 12 - 40 - 12 - 18 };
+            // Largeur adaptee au titre de la session : 320 px au moins, la largeur depliee au plus.
+            const double CHROME = 12 + 40 + 12 + 18;
+            var line = new TextBlock { FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Ink, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = EXP_W - CHROME };
             line.Inlines.Add(new Run(name) { FontFamily = Mono });
             line.Inlines.Add(new Run(" attend ta réponse"));
             text.Children.Add(line);
@@ -760,7 +796,9 @@ namespace ClaudeNotch
                 Text = p.Kind == "ask" ? "Question" : "Permission · " + Safe(ToolLabel(p.ToolName))
             });
             row.Children.Add(text);
-            ShowPeek(row, PEEK_W, PEEK_H, PEEK_HOLD, p);
+            line.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            double w = Math.Max(PEEK_W, Math.Min(EXP_W, Math.Ceiling(line.DesiredSize.Width) + CHROME + 2));
+            ShowPeek(row, w, PEEK_H, PEEK_HOLD, p);
         }
 
         // Fin d'une commande longue (bip run) : reussie ou en echec, en 4 s.
@@ -872,6 +910,7 @@ namespace ClaudeNotch
                 if (_inCall) return;
                 _inCall = true;
                 _callStart = now;
+                _callApp = app;
                 // Armee meme sous une sourdine manuelle : si celle-ci expire pendant l'appel,
                 // l'automatique prend le relais. La micro-ouverture seulement si ca change quelque chose.
                 if (_cfg.AutoDnd)
@@ -910,7 +949,7 @@ namespace ClaudeNotch
             if (ko > 0) parts.Add(ko + (ko > 1 ? " commandes ont échoué" : " commande a échoué"));
             var waiting = _views.Where(v => v.State == St.Waiting).OrderBy(v => v.Since).ToList();
             if (waiting.Count > 0)
-                parts.Add(waiting[0].S.Name + " t'attend depuis " + Fmt(DateTime.Now - waiting[0].Since)
+                parts.Add(waiting[0].S.ShortName + " t'attend depuis " + Fmt(DateTime.Now - waiting[0].Since)
                           + (waiting.Count > 1 ? " (+" + (waiting.Count - 1) + ")" : ""));
             return parts.Count == 0 ? null : "Pendant ton appel : " + string.Join(" · ", parts);
         }
@@ -949,8 +988,18 @@ namespace ClaudeNotch
             }
         }
 
+        // "☾ jusqu'a 10:30" ou "☾ appel en cours (Teams)", encoche depliee seulement.
+        void UpdateDndTag()
+        {
+            if (_dndTagBox == null) return;
+            _dndTag.Text = _cfg.Dnd ? "☾ jusqu'à " + _cfg.DndUntil.ToString("HH:mm")
+                                    : "☾ appel en cours" + (_callApp != null ? " (" + _callApp + ")" : "");
+            _dndTagBox.Visibility = _form == Form.Expanded && Quiet ? Visibility.Visible : Visibility.Collapsed;
+        }
+
         void UpdateMoon()
         {
+            UpdateDndTag();
             var v = Quiet ? Visibility.Visible : Visibility.Collapsed;
             if (_moon.Visibility == v) return;
             _moon.Visibility = v;
@@ -971,7 +1020,8 @@ namespace ClaudeNotch
 
         void RenderPanel(bool opening)
         {
-            string sig = string.Join(";", _views.Select(v => v.S.Id + ":" + v.State + ":" + v.S.Name + ":" + v.Pending.Count))
+            string sig = string.Join(";", _views.Select(v => v.S.Id + ":" + v.State + ":" + v.S.Display + ":" + v.Pending.Count + ":"
+                                                         + string.Join(",", VisibleAgents(v.S).Select(a => a.Tuid + (a.End != null ? "+" : "")))))
                        + "|" + string.Join(",", _pending.Select(p => p.GetHashCode()))
                        + "|" + (_settingsOpen ? Quiet + ":" + _cfg.AutoDnd + ":" + _cfg.Flash + ":" + Rules.Created().Count : "");
             if (sig == _panelSig && !opening) return;
@@ -1112,7 +1162,7 @@ namespace ClaudeNotch
             actions.Children.Add(Small("Dossier d'état", () => { try { System.Diagnostics.Process.Start("explorer.exe", Program.StateDir); } catch { } }));
             actions.Children.Add(Small("Purger les états", () =>
             {
-                try { foreach (var f in Directory.GetFiles(Program.StateDir, "*.state")) File.Delete(f); } catch { }
+                try { foreach (var f in Directory.GetFiles(Program.StateDir)) File.Delete(f); } catch { }   // etats et sous-agents
                 Refresh();
             }));
             actions.Children.Add(Small("Quitter Bip", () =>
@@ -1339,7 +1389,9 @@ namespace ClaudeNotch
         // Ligne de session : 36 px, Bip 20 px, nom en Cascadia Mono, etat + duree a droite.
         FrameworkElement Row(View v, bool separator)
         {
-            var g = new Grid { Height = 36, Background = Brushes.Transparent };
+            // Session prete : le recap de son dernier tour, en vert sous le nom.
+            string recap = !v.S.IsRun && v.State == St.Ready ? TurnRecap(v.S) : null;
+            var g = new Grid { Height = recap == null ? 36 : 48, Background = Brushes.Transparent };
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -1349,7 +1401,7 @@ namespace ClaudeNotch
             bip.VerticalAlignment = VerticalAlignment.Center;
             g.Children.Add(bip);
 
-            var name = new TextBlock { Text = Safe(v.S.Name), FontFamily = Mono, FontSize = 12.5, Foreground = Code, VerticalAlignment = VerticalAlignment.Center,
+            var name = new TextBlock { Text = Safe(v.S.Display), FontFamily = Mono, FontSize = 12.5, Foreground = Code, VerticalAlignment = VerticalAlignment.Center,
                                        TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = v.S.Dir };
             if (v.S.IsRun)
             {
@@ -1362,6 +1414,15 @@ namespace ClaudeNotch
                 dock.Children.Add(name);
                 Grid.SetColumn(dock, 1);
                 g.Children.Add(dock);
+            }
+            else if (recap != null)
+            {
+                var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+                stack.Children.Add(name);
+                stack.Children.Add(new TextBlock { Text = recap, FontSize = 11.5, Foreground = OnGreen, Margin = new Thickness(0, 2, 0, 0),
+                                                   TextTrimming = TextTrimming.CharacterEllipsis });
+                Grid.SetColumn(stack, 1);
+                g.Children.Add(stack);
             }
             else
             {
@@ -1400,7 +1461,70 @@ namespace ClaudeNotch
             var wrap = new StackPanel();
             if (separator) wrap.Children.Add(new Rectangle { Height = 1, Fill = Sep });
             wrap.Children.Add(border);
+            AddAgentLines(wrap, v.S);
             return wrap;
+        }
+
+        // ------------------------------------------------------------ sous-agents
+
+        const int MAX_AGENT_LINES = 5;
+
+        // En cours, ou termines depuis moins d'une minute. Garde-fou : un sous-agent sans fin
+        // connue (interrompu sans signal) disparait au bout de 2 h, ou avec sa session.
+        static List<SubAgent> VisibleAgents(Session s)
+        {
+            var now = DateTime.Now;
+            return s.SubAgents.Where(a => a.End == null ? now - a.Start < TimeSpan.FromHours(2)
+                                                        : now - a.End.Value < TimeSpan.FromMinutes(1)).ToList();
+        }
+
+        // Sous la ligne de la session, en retrait : "↳ description" et sa duree ; vert une minute une fois fini.
+        void AddAgentLines(Panel wrap, Session s)
+        {
+            var list = VisibleAgents(s);
+            foreach (var a in list.Take(MAX_AGENT_LINES))
+            {
+                var g = new Grid { Height = 24, Margin = new Thickness(34, 0, 0, 0) };
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                bool done = a.End != null;
+                Brush fg = done ? (a.Failed ? Muted : OnGreen) : Code;
+                g.Children.Add(new TextBlock { Text = "↳ " + Safe(a.Description), FontSize = 12, Foreground = fg, VerticalAlignment = VerticalAlignment.Center,
+                                               TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = a.Description });
+                var right = new TextBlock { FontSize = 11.5, Foreground = done && !a.Failed ? OnGreen : Muted, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 4, 0) };
+                Grid.SetColumn(right, 1);
+                g.Children.Add(right);
+                var agent = a;
+                _tickers.Add(() => right.Text = agent.End == null ? Fmt(DateTime.Now - agent.Start) : agent.Failed ? "interrompu" : "✓ terminé");
+                wrap.Children.Add(g);
+            }
+            if (list.Count > MAX_AGENT_LINES)
+                wrap.Children.Add(new TextBlock { Text = "+" + (list.Count - MAX_AGENT_LINES) + (list.Count - MAX_AGENT_LINES > 1 ? " autres" : " autre"),
+                                                  FontSize = 11.5, Foreground = Muted, Margin = new Thickness(34, 2, 0, 6) });
+        }
+
+        // "4 fichiers modifiés · 6 commandes · 2 sous-agents · 1 échec · 1 refus", d'apres le
+        // journal d'audit depuis le debut du tour ; null si rien a dire ou debut inconnu.
+        string TurnRecap(Session s)
+        {
+            DateTime from;
+            if (!_turnStart.TryGetValue(s.Id, out from)) return null;
+            List<AuditRow> rows;
+            try { rows = Audit.Rows(Program.Root, 1).Where(r => r.Sess == s.Id && !r.Rule && r.T >= from.AddSeconds(-2)).ToList(); }
+            catch { return null; }
+            int files = rows.Where(r => (r.Tool == "Edit" || r.Tool == "Write" || r.Tool == "MultiEdit" || r.Tool == "NotebookEdit") && !r.Refused)
+                            .Select(r => r.Obj).Distinct().Count();
+            int cmds = rows.Count(r => r.Tool == "Bash" || r.Tool == "PowerShell");
+            int agents = rows.Count(r => r.Tool == "Agent" || r.Tool == "Task");
+            int fails = rows.Count(r => r.Result == "echec");
+            int refused = rows.Count(r => r.Refused);
+            var parts = new List<string>();
+            if (files > 0) parts.Add(files + (files > 1 ? " fichiers modifiés" : " fichier modifié"));
+            if (cmds > 0) parts.Add(cmds + (cmds > 1 ? " commandes" : " commande"));
+            if (agents > 0) parts.Add(agents + (agents > 1 ? " sous-agents" : " sous-agent"));
+            if (fails > 0) parts.Add(fails + (fails > 1 ? " échecs" : " échec"));
+            if (refused > 0) parts.Add(refused + " refus");
+            return parts.Count == 0 ? null : string.Join(" · ", parts);
         }
 
         static string InfoOf(View v)
@@ -1447,7 +1571,7 @@ namespace ClaudeNotch
             var head = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 12) };
             head.Children.Add(new Bip { Width = 40, Height = 40, State = BipState.Waiting, WaitingSince = p.Since, VerticalAlignment = VerticalAlignment.Center });
             var who = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
-            who.Children.Add(new TextBlock { Text = v.S.Name, FontFamily = Mono, FontSize = 13, Foreground = Code, TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = v.S.Dir });
+            who.Children.Add(new TextBlock { Text = Safe(v.S.Display), FontFamily = Mono, FontSize = 13, Foreground = Code, TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = v.S.Dir });
             var since = new TextBlock { FontSize = 12, Foreground = Muted, Margin = new Thickness(0, 2, 0, 0) };
             who.Children.Add(since);
             head.Children.Add(who);

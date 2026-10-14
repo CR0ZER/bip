@@ -56,6 +56,25 @@ namespace ClaudeNotch
         public string Kind = "claude";   // "claude" ou "run" (commande lancee par bip run)
         public string Label;             // run : la commande
         public string Code;              // run termine : code de retour, ou "interrompu"
+        public string Title;             // claude : titre du chat (transcript), ou null
+        public List<SubAgent> SubAgents = new List<SubAgent>();
+
+        // Ligne de session : "titre · dossier/", ou "dossier/" sans titre. Titre long coupe, dossier toujours visible.
+        public string Display
+        {
+            get
+            {
+                if (IsRun) return Name;
+                var folder = NameOf(Dir) + "/";
+                if (string.IsNullOrEmpty(Title)) return folder;
+                var t = Title.Length > TITLE_MAX ? Title.Substring(0, TITLE_MAX - 1).TrimEnd() + "…" : Title;
+                return t + " · " + folder;
+            }
+        }
+        const int TITLE_MAX = 30;
+
+        // Entrouverture : le titre seul (ou le dossier sans titre).
+        public string ShortName { get { return IsRun || string.IsNullOrEmpty(Title) ? Name : Title; } }
 
         public bool IsRun { get { return Kind == "run"; } }
         public TimeSpan RunTime { get { return Since - Order; } }   // run termine : duree
@@ -267,17 +286,22 @@ namespace ClaudeNotch
                     }
 
                     string label = parts.Length > 4 ? parts[4].Trim() : null;
+                    string id = Path.GetFileNameWithoutExtension(f);
+                    bool claude = kind == "claude" && st != St.Stale;
                     list.Add(new Session
                     {
-                        Id = Path.GetFileNameWithoutExtension(f),
+                        Id = id,
                         Dir = dir,
                         Name = kind == "run" && !string.IsNullOrEmpty(label) ? label : Session.NameOf(dir),
                         State = st,
                         Since = since,
                         Order = start,
                         Kind = kind,
-                        Label = label,
-                        Code = parts.Length > 5 ? parts[5].Trim() : null
+                        Label = kind == "run" ? label : null,
+                        Code = parts.Length > 5 ? parts[5].Trim() : null,
+                        // claude : le 5e champ est le transcript (titre du chat)
+                        Title = claude ? Agents.Title(label) : null,
+                        SubAgents = claude ? Agents.Load(stateDir, id) : new List<SubAgent>()
                     });
                 }
                 catch { }
@@ -312,7 +336,7 @@ namespace ClaudeNotch
         {
             try
             {
-                foreach (var f in Directory.GetFiles(stateDir, "*.state"))
+                foreach (var f in Directory.GetFiles(stateDir, "*.state").Concat(Directory.GetFiles(stateDir, "*.agents")))
                     if (DateTime.Now - File.GetLastWriteTime(f) > PURGE_AGE) File.Delete(f);
             }
             catch { }

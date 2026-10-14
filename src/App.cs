@@ -115,11 +115,14 @@ namespace ClaudeNotch
                 bool on = Sessions.IsActive(s.State);
                 Console.WriteLine("{0,-12} {1,-11} {2,5:N0} m  {3}",
                     s.Id.Length > 12 ? s.Id.Substring(0, 12) : s.Id, States.Label(s.State),
-                    s.Elapsed.TotalMinutes, on ? "#" + (++rank) + "  " + s.Name : "-   " + s.Name);
+                    s.Elapsed.TotalMinutes, on ? "#" + (++rank) + "  " + s.Display : "-   " + s.Display);
+                foreach (var a in s.SubAgents)
+                    Console.WriteLine("{0,-12} {1,-11} {2,5:N0} s     ↳ {3}", "", a.End == null ? "en cours" : a.Failed ? "echec" : "termine",
+                        ((a.End ?? DateTime.Now) - a.Start).TotalSeconds, a.Description);
             }
             Console.WriteLine();
             Console.WriteLine(rank == 0 ? "=> encoche au repos" :
-                rank <= 5 ? "=> " + rank + " nuage(s)" : "=> 5 nuages + " + (rank - 5));
+                rank <= 5 ? "=> " + rank + " Bip" : "=> 5 Bip + " + (rank - 5));
         }
     }
 
@@ -190,6 +193,8 @@ namespace ClaudeNotch
             add("Stop",               null, entry(new[] { "state", "ready" }, true, 0));
             add("StopFailure",        null, entry(new[] { "state", "error" }, true, 0));
             add("PermissionDenied",   null, entry(new[] { "audit" }, true, 0));
+            add("SubagentStart",      null, entry(new[] { "agent" }, true, 0));
+            add("SubagentStop",       null, entry(new[] { "agent" }, true, 0));
             // Fin de session : bloquant, pour que l'etat soit retire avant la sortie.
             add("SessionEnd",         null, entry(new[] { "state", "end" }, false, 5));
 

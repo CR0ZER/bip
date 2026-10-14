@@ -2,6 +2,38 @@
 
 Les versions suivent [SemVer](https://semver.org/lang/fr/). Chaque section sert de notes à la release GitHub correspondante.
 
+## [0.3.0] - 2026-10-14
+
+Bip montre ce qui se passe dans une session : ses sous-agents, son nom, ce qu'elle a fait. · *Bip now shows what happens inside a session: its sub-agents, its name, what it did.*
+
+### Nouveautés
+
+- **Sous-agents visibles** dans l'encoche dépliée : sous chaque session, ses sous-agents en retrait, avec leur description et leur durée (5 au plus, puis « +N »). Un sous-agent fini passe au vert une minute, puis disparaît, y compris en arrière-plan. L'encoche repliée garde un seul Bip par session.
+- **Titre du chat Claude** : chaque session s'affiche « titre · dossier/ » (« Migrations staging · data-pipeline/ ») ; l'entrouverture donne le titre seul. Plusieurs sessions dans un même dossier se distinguent enfin.
+- **Récap de fin de tour** en vert sous une session prête : « 3 fichiers modifiés · 2 commandes · 1 échec ».
+- **« Ne pas déranger » visible encoche dépliée**, en haut à gauche : « ☾ jusqu'à 17:18 » ou « ☾ appel en cours (Teams) » ; un clic le lève.
+- **Rapport d'audit refait** : regroupé par session puis par agent (chaque sous-agent avec ses propres actions), synthèse en tête, filtres par session et par agent, nouveau style clair et sombre, commandes longues repliées.
+- **Journal d'audit** : chaque action d'un sous-agent porte son identifiant.
+
+### Corrections
+
+- L'entrouverture s'élargit selon le nom de la session au lieu de le couper.
+- Après un dépliage ou une entrouverture, les Bip cachés restaient animés : l'encoche consommait 2 à 3 fois plus (≈ 6 % d'un cœur au lieu de ≈ 2,3 %). Le panneau et l'entrouverture sont maintenant vidés une fois refermés.
+- Les tests n'ajoutent plus d'entrées au registre (empreintes de fin de chaîne de leurs journaux temporaires).
+
+### Performances
+
+- Encoche : ~2,3 % d'un cœur avec une session au travail, y compris après des dépliages ; ~76 Mo.
+- Hook : ~115 ms par appel, inchangé par rapport à la 0.2 malgré le suivi des sous-agents.
+
+### Installation
+
+- Deux nouveaux hooks (`SubagentStart`, `SubagentStop`) : relancer `installer.cmd` après la mise à jour.
+
+### English summary
+
+Sub-agents shown under each session in the open notch, sessions named after their Claude chat title, an end-of-turn recap, do-not-disturb shown in the open notch, and a redesigned audit report grouped by session and agent. Re-run `installer.cmd` to add the two new hooks.
+
 ## [0.2.0] - 2026-10-12
 
 Bip suit aussi tes commandes, se fait discret pendant tes appels et garde la trace de ce que font les agents. · *Bip now follows your commands, keeps quiet during calls and records what agents do.*

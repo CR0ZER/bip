@@ -16,6 +16,18 @@ static class AuditTests
         if (!ok) _fail++;
     }
 
+    // Dossier temporaire et empreinte de fin de chaine qu'il a laissee dans le registre.
+    static void Clean(string root)
+    {
+        try { Directory.Delete(root, true); } catch { }
+        try
+        {
+            using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Bip\Audit", true))
+                if (k != null) k.DeleteValue(Audit.HeadName(root), false);
+        }
+        catch { }
+    }
+
     static void Masked(string input, string secret)
     {
         var m = Audit.Mask(input);
@@ -69,7 +81,7 @@ static class AuditTests
             File.WriteAllLines(file, new[] { lines[0], lines[1] });
             Check("fin tronquee detectee", Audit.Verify(root, out n) != null);
         }
-        finally { try { Directory.Delete(root, true); } catch { } }
+        finally { Clean(root); }
 
         Console.WriteLine("Regroupement et reprise");
         Check("docker compose up -> docker compose up", k("docker compose up") == "docker compose up");
@@ -91,7 +103,7 @@ static class AuditTests
             var last = File.ReadAllLines(file);
             Check("ligne coupee isolee", last.Length == 4 && last[3].StartsWith("{") && last[3].Contains("echo ok"));
         }
-        finally { try { Directory.Delete(root, true); } catch { } }
+        finally { Clean(root); }
 
         Console.WriteLine("Lecteur JSON");
         var o = Json.Obj(Json.Parse("{\"a\":\"\\u00e9t\\u00e9 \\\"x\\\"\\n\",\"n\":42,\"big\":12345678901,\"f\":1.5e2,\"neg\":-3,\"t\":true,\"z\":null,\"arr\":[1,{\"b\":[]}],\"e\":{}}"));
@@ -126,7 +138,47 @@ static class AuditTests
             File.WriteAllText(file, "");
             Check("fichier raccourci relu en entier", Audit.Rows(root, 1).Count == 0);
         }
-        finally { try { Directory.Delete(root, true); } catch { } }
+        finally { Clean(root); }
+
+        Console.WriteLine("Sous-agents");
+        Func<int, long> T = s => new DateTime(2026, 10, 14, 15, 38, s).Ticks;
+        // Capture reelle du 2026-10-14 : deux en arriere-plan (A, B), un au premier plan (C).
+        var ag = Agents.Parse(new[]
+        {
+            "lance|" + T(24) + "|tA|Compte les fichiers sources",
+            "lance|" + T(26) + "|tB|Cherche les constantes de délai",
+            "lance|" + T(28) + "|tC|Vérifie la version du CHANGELOG",
+            "id|" + T(29) + "|tA|agA",
+            "debut|" + T(29) + "|agA", "debut|" + T(29) + "|agB", "debut|" + T(29) + "|agC",
+            "id|" + T(29) + "|tB|agB",
+            "fin|" + T(35) + "|agA",
+            "fin|" + T(35) + "|agC", "id|" + T(35) + "|tC|agC", "fin|" + T(35) + "|agC",
+        });
+        Check("trois sous-agents, ordre de lancement", ag.Count == 3 && ag[1].Description == "Cherche les constantes de délai");
+        Check("arriere-plan relie par la reponse", ag[0].Id == "agA" && ag[1].Id == "agB");
+        Check("premier plan apparie par ordre", ag[2].Id == "agC");
+        Check("fins : A et C finis, B en cours", ag[0].End != null && ag[1].End == null && ag[2].End != null);
+        // Premier plan pas encore relie (reponse pas arrivee) : appariement par le debut libre.
+        var ag2 = Agents.Parse(new[] { "lance|" + T(1) + "|t1|Un", "lance|" + T(2) + "|t2|Deux", "debut|" + T(3) + "|x1", "debut|" + T(3) + "|x2", "fin|" + T(9) + "|x2" });
+        Check("deux au premier plan, appariement dans l'ordre", ag2[0].Id == "x1" && ag2[1].Id == "x2" && ag2[1].End != null && ag2[0].End == null);
+        var ag3 = Agents.Parse(new[] { "lance|" + T(1) + "|t1|Un", "echec|" + T(4) + "|t1", "ligne illisible" });
+        Check("echec de l'outil : termine en echec", ag3.Count == 1 && ag3[0].Failed && ag3[0].End != null);
+
+        Console.WriteLine("Titre de la session");
+        Check("dernier titre retenu", Agents.LastTitle("{\"type\":\"custom-title\",\"customTitle\":\"Claude Voyant\"}\n{\"x\":1}\n{\"type\":\"custom-title\",\"customTitle\":\"Claude Voyant - Bip\"}\n") == "Claude Voyant - Bip");
+        Check("titre avec accents et guillemets", Agents.LastTitle("{\"customTitle\":\"Feuille de route \\\"IA\\\" \\u00e9t\\u00e9\"}") == "Feuille de route \"IA\" été");
+        Check("pas de titre", Agents.LastTitle("{\"type\":\"user\"}") == null);
+        var tr = Path.Combine(Path.GetTempPath(), "bip-tests-" + Guid.NewGuid().ToString("N") + ".jsonl");
+        try
+        {
+            var filler = new string('x', 300 * 1024);   // titre au-dela du premier bloc lu depuis la fin
+            File.WriteAllText(tr, "{\"type\":\"custom-title\",\"customTitle\":\"Ancien\"}\n{\"m\":\"" + filler + "\"}\n");
+            Check("titre trouve en remontant plusieurs blocs", Agents.Title(tr) == "Ancien");
+            File.AppendAllText(tr, "{\"type\":\"custom-title\",\"customTitle\":\"Renommé\"}\n");
+            Check("renommage lu dans les nouvelles lignes", Agents.Title(tr) == "Renommé");
+            Check("transcript absent : pas de titre", Agents.Title(tr + ".absent") == null);
+        }
+        finally { try { File.Delete(tr); } catch { } }
 
         Console.WriteLine(_fail == 0 ? "Tous les tests passent." : _fail + " test(s) en échec.");
         return _fail == 0 ? 0 : 1;

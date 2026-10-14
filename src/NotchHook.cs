@@ -2,6 +2,7 @@
 // NotchHook.exe permission      hook PermissionRequest synchrone : relaie a l'encoche
 // NotchHook.exe ask             hook PreToolUse (AskUserQuestion) synchrone : idem
 // NotchHook.exe audit           hook PermissionDenied async : journal d'audit seulement
+// NotchHook.exe agent           hooks SubagentStart / SubagentStop async : suivi des sous-agents
 //
 // Chaque utilisation d'outil est aussi inscrite au journal d'audit (Audit.cs), par le
 // hook lui-meme : l'audit fonctionne meme encoche fermee.
@@ -113,11 +114,20 @@ static class NotchHook
             string proj = Environment.GetEnvironmentVariable("CLAUDE_PROJECT_DIR");
             if (string.IsNullOrEmpty(proj)) proj = dir;
 
+            string transcript = Json.Str(d, "transcript_path") ?? "";
             if (mode == "state")
             {
-                // Etat et audit independants : l'echec de l'un ne prive pas l'autre.
-                try { WriteState(id, args.Length > 1 ? args[1] : "ready", dir, started); } catch { }
+                // Etat, sous-agents et audit independants : l'echec de l'un ne prive pas les autres.
+                try { WriteState(id, args.Length > 1 ? args[1] : "ready", dir, started, transcript); } catch { }
+                try { TrackAgentTool(evt, d, id); } catch { }
                 if (evt == "PreToolUse" || evt == "PostToolUse" || evt == "PostToolUseFailure") AuditTool(evt, d, id, dir, proj);
+                return 0;
+            }
+            if (mode == "agent")
+            {
+                // SubagentStart / SubagentStop : debut et vraie fin d'un sous-agent (aussi en arriere-plan).
+                string agent = Json.Str(d, "agent_id");
+                if (!string.IsNullOrEmpty(agent)) AppendAgent(id, evt == "SubagentStop" ? "fin" : "debut", agent);
                 return 0;
             }
             if (mode == "audit")
@@ -144,7 +154,7 @@ static class NotchHook
                 if (mode == "permission") AuditDecision(reply, d, id);
                 // Repondu : la session repart. Sinon Claude pose la question lui-meme et la
                 // session attend l'utilisateur. Horodatage "maintenant" : suit le busy du PreToolUse.
-                WriteState(id, string.IsNullOrEmpty(reply) ? "waiting" : "busy", dir, DateTime.Now);
+                WriteState(id, string.IsNullOrEmpty(reply) ? "waiting" : "busy", dir, DateTime.Now, transcript);
             }
         }
         catch { /* un hook ne doit jamais faire echouer une session */ }
@@ -185,6 +195,15 @@ static class NotchHook
                 { "obj", Audit.Summarize(tool, Json.Obj(Json.Get(d, "tool_input"))) },
                 { "tuid", Json.Str(d, "tool_use_id") }
             };
+            // Action faite par un sous-agent : son identifiant (rapport d'audit par agent).
+            string agent = Json.Str(d, "agent_id");
+            if (!string.IsNullOrEmpty(agent)) fields["agent"] = agent;
+            // Lancement d'un sous-agent : son identifiant, pour regrouper ses actions sous lui.
+            if (ev == "fait" && (tool == "Agent" || tool == "Task"))
+            {
+                string spawned = Json.Str(Json.Obj(Json.Get(d, "tool_response")), "agentId");
+                if (!string.IsNullOrEmpty(spawned)) fields["spawn"] = spawned;
+            }
             if (ev == "outil")
             {
                 fields["dir"] = dir;
@@ -216,7 +235,51 @@ static class NotchHook
         catch { }
     }
 
-    static void WriteState(string id, string state, string dir, DateTime when)
+    // ------------------------------------------------------------ sous-agents
+
+    // state\<session>.agents : une ligne par evenement, "type|ticks|cle|valeur", lue par l'encoche.
+    //   lance|t|tool_use_id|description   l'outil Agent est appele
+    //   id|t|tool_use_id|agent_id          reponse de l'outil : relie l'appel au sous-agent
+    //   debut|t|agent_id                   SubagentStart
+    //   fin|t|agent_id                     SubagentStop, ou fin de l'outil au premier plan
+    //   echec|t|tool_use_id                l'outil Agent a echoue
+    static void TrackAgentTool(string evt, Dictionary<string, object> d, string id)
+    {
+        string tool = Json.Str(d, "tool_name");
+        if (tool != "Agent" && tool != "Task") return;
+        string tuid = Json.Str(d, "tool_use_id") ?? "";
+        if (evt == "PreToolUse")
+        {
+            string desc = Json.Str(Json.Obj(Json.Get(d, "tool_input")), "description") ?? "Sous-agent";
+            AppendAgent(id, "lance", tuid + "|" + desc.Replace("|", "¦").Replace("\r", " ").Replace("\n", " "));
+        }
+        else if (evt == "PostToolUse")
+        {
+            // Arriere-plan : reponse immediate (async_launched) ; premier plan : reponse a la fin (completed).
+            var resp = Json.Obj(Json.Get(d, "tool_response"));
+            string agent = Json.Str(resp, "agentId");
+            if (string.IsNullOrEmpty(agent)) return;
+            AppendAgent(id, "id", tuid + "|" + agent);
+            if (Json.Str(resp, "status") == "completed") AppendAgent(id, "fin", agent);
+        }
+        else if (evt == "PostToolUseFailure") AppendAgent(id, "echec", tuid);
+    }
+
+    static void AppendAgent(string id, string type, string rest)
+    {
+        Directory.CreateDirectory(Path.Combine(Root, "state"));
+        string file = Path.Combine(Root, "state", id + ".agents");
+        string line = type + "|" + DateTime.Now.Ticks + "|" + rest + "\n";
+        for (int i = 0; ; i++)
+        {
+            try { File.AppendAllText(file, line, new UTF8Encoding(false)); return; }
+            catch (IOException) { if (i >= 5) return; Thread.Sleep(30); }
+        }
+    }
+
+    // ------------------------------------------------------------ etat de la session
+
+    static void WriteState(string id, string state, string dir, DateTime when, string transcript)
     {
         string stateDir = Path.Combine(Root, "state");
         Directory.CreateDirectory(stateDir);
@@ -225,6 +288,7 @@ static class NotchHook
         if (state == "end")
         {
             if (File.Exists(file)) File.Delete(file);
+            try { File.Delete(Path.Combine(stateDir, id + ".agents")); } catch { }
             return;
         }
 
@@ -232,10 +296,11 @@ static class NotchHook
         // ponytail: lecture/ecriture non atomiques, fenetre de quelques ms ; verrou de fichier si un jour ca se voit.
         if (File.Exists(file) && File.GetLastWriteTime(file) > when) return;
 
-        // Format : etat|dossier|pid. La date de creation du fichier, conservee par
-        // les reecritures, donne l'ordre de lancement des sessions dans l'encoche.
-        // Quelques essais : l'encoche lit le fichier, un autre hook peut l'ecrire.
-        string text = state + "|" + dir + "|" + ParentPid();
+        // Format : etat|dossier|pid|claude|transcript (le transcript donne le titre de la session).
+        // La date de creation du fichier, conservee par les reecritures, donne l'ordre de
+        // lancement des sessions dans l'encoche. Quelques essais : l'encoche lit le fichier, un
+        // autre hook peut l'ecrire.
+        string text = state + "|" + dir + "|" + ParentPid() + "|claude|" + transcript;
         for (int i = 0; ; i++)
         {
             try

@@ -83,8 +83,8 @@ Deux congés concaves de 8 px le raccordent au bord de l'écran (à gauche `M0,0
 |---|---|---|
 | Trait | 120 × 4 px, rayon bas 2 | Rien : aucune session active. |
 | Repliée | hauteur 22 px, marge latérale 10, rayon bas 11 | Bip à 16 px, écart 6 px, au plus 5 puis « +N », dans l'ordre de lancement des sessions. Un ☾ quand « ne pas déranger » est actif. Les clics traversent. |
-| Entrouverte | 320 × 60 px, rayon bas 20, marges 12 / 18 | Bip 40 px + « `data-pipeline` attend ta réponse » (13/18 semibold) + type de demande (12/16, `#A3A3A3`). Reste 4 s. |
-| Dépliée | 440 px de large, marges 12 (20 en haut), rayon bas 24 | Bouton ☰ en haut à droite. Cartes de demande en tête (fond `#161616`, rayon 14, marge 14), puis lignes de session de 36 px (Bip 20 px, nom en Cascadia Mono 12,5, état et durée à droite) séparées par `#1C1C1C`. Les réglages s'ajoutent en dessous, après un trait `#2A2A2A`. |
+| Entrouverte | 60 px de haut, 320 à 440 px de large selon le nom, rayon bas 20, marges 12 / 18 | Bip 40 px + « `Migrations staging` attend ta réponse » (titre du chat ; 13/18 semibold) + type de demande (12/16, `#A3A3A3`). Reste 4 s. |
+| Dépliée | 440 px de large, marges 12 (20 en haut), rayon bas 24 | Bouton ☰ en haut à droite ; en haut à gauche, « ☾ jusqu'à 17:18 » (11,5, `#A3A3A3`) quand « ne pas déranger » est actif. Cartes de demande en tête (fond `#161616`, rayon 14, marge 14), puis lignes de session de 36 px (Bip 20 px, « titre · dossier/ » en Cascadia Mono 12,5, état et durée à droite) séparées par `#1C1C1C` ; 48 px avec le récap de fin de tour (11,5, `#3FD07F`). Sous-agents : sous-lignes de 24 px en retrait de 34 px, « ↳ description » (12) et durée, vertes une minute une fois finies ; 5 au plus, puis « +N autres ». Les réglages s'ajoutent en dessous, après un trait `#2A2A2A`. |
 
 **Carte de permission** : Bip 40 px + nom du projet (Cascadia Mono 13) + « attend depuis 2 min »
 (12, `#A3A3A3`) ; question 14/20 semibold ; commande en Cascadia Mono 12/18 sur fond `#000`,

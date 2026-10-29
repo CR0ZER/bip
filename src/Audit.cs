@@ -40,7 +40,10 @@ namespace ClaudeNotch
             get
             {
                 if (string.IsNullOrEmpty(Dir)) return "—";
-                var n = Path.GetFileName(Dir.TrimEnd('\\', '/'));
+                // Decoupe a la main : Path.GetFileName leve une exception sur un caractere
+                // invalide, et une seule ligne du journal ne doit pas faire tomber le rapport.
+                var d = Dir.TrimEnd('\\', '/');
+                var n = d.Substring(d.LastIndexOfAny(new[] { '\\', '/' }) + 1);
                 return string.IsNullOrEmpty(n) ? Dir : n;
             }
         }
@@ -54,9 +57,35 @@ namespace ClaudeNotch
     {
         public const int KeepDays = 90;   // conservation du journal, et periode du rapport
 
-        // Outils de lecture ou internes : enregistres, mais masques par defaut dans le rapport.
+        // Outils de lecture ou internes : masques par defaut dans le rapport (anciens journaux compris).
         public static readonly HashSet<string> Quiet = new HashSet<string>
             { "Read", "Grep", "Glob", "LS", "TodoWrite", "AskUserQuestion", "ExitPlanMode", "NotebookRead", "SubagentHandback" };
+
+        // ---- Ce qu'on enregistre (v0.4 : journal allege de moitie environ)
+
+        // Lectures : une seule ligne (l'action), pas de ligne de resultat. Savoir qu'un agent
+        // a lu un .env compte ; savoir que la lecture a reussi, beaucoup moins.
+        public static readonly HashSet<string> Reads = new HashSet<string> { "Read", "Grep", "Glob", "LS", "NotebookRead" };
+
+        // Outils internes, sans effet sur le poste : plus enregistres du tout.
+        static readonly HashSet<string> Internal = new HashSet<string>
+            { "AskUserQuestion", "SubagentHandback", "TodoWrite", "ToolSearch", "ExitPlanMode", "EnterPlanMode", "mcp__ccd_session__mark_chapter" };
+
+        public static bool Skipped(string tool, string ev)
+        {
+            if (Internal.Contains(tool ?? "") || (tool ?? "").StartsWith("mcp__ccd_turn__")) return true;   // plan, fin de tour de l'appli
+            return ev == "fait" && Reads.Contains(tool ?? "");
+        }
+
+        // L'objet n'est ecrit que sur la ligne de l'action : les lignes suivantes (demande,
+        // decision, resultat) s'y rattachent par l'identifiant d'appel. Sans identifiant, on le
+        // garde pour le rattachement par objet.
+        public static bool NeedsObj(string ev, string tuid)
+        {
+            return ev == "outil" || ev == "refus-auto" || string.IsNullOrEmpty(tuid);
+        }
+
+        public const int ObjMax = 500;
 
         static string DirOf(string root) { return Path.Combine(root, "audit"); }
         static string FileOf(string root, DateTime d) { return Path.Combine(DirOf(root), d.ToString("yyyy-MM-dd") + ".jsonl"); }
@@ -220,7 +249,7 @@ namespace ClaudeNotch
                 default: s = input == null || input.Count == 0 ? null : string.Join(", ", input.Select(kv => kv.Key + "=" + Brief(kv.Value))); break;
             }
             s = Mask(s ?? "");
-            return s.Length > 2000 ? s.Substring(0, 2000) + " …" : s;
+            return s.Length > ObjMax ? s.Substring(0, ObjMax) + " … +" + (s.Length - ObjMax) + " caractères" : s;
         }
 
         // Masquee avant d'etre coupee : un secret coupe en deux echapperait aux motifs.
@@ -443,14 +472,16 @@ namespace ClaudeNotch
                 case "always": r.Decision = "autorisé (+ règle de session)"; r.Via = "toi, dans Bip"; return;
                 case "deny":   r.Decision = "refusé"; r.Via = "toi, dans Bip"; return;
             }
+            // Lecture (v0.4) : pas de ligne de resultat, on ne sait donc pas si elle a eu lieu.
+            bool read = r.Result == null && Reads.Contains(r.Tool ?? "");
             if (r.Asked)
             {
                 // Demande renvoyee a la fenetre Claude : executee = autorisee, sinon refusee ou annulee.
-                r.Decision = r.Result != null ? "autorisé" : "refusé ou annulé";
+                r.Decision = read ? "décidé dans Claude" : r.Result != null ? "autorisé" : "refusé ou annulé";
                 r.Via = "toi, dans Claude";
                 return;
             }
-            if (r.Result != null)
+            if (r.Result != null || read)
             {
                 r.Decision = "autorisé d'office";
                 r.Via = r.Mode == "auto" ? "mode auto" : r.Mode == "acceptEdits" ? "mode modifications acceptées"

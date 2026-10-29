@@ -188,13 +188,10 @@ static class NotchHook
             }
             if (d == null) return;
             string tool = Json.Str(d, "tool_name") ?? "";
-            var fields = new Dictionary<string, object>
-            {
-                { "sess", id },
-                { "tool", tool },
-                { "obj", Audit.Summarize(tool, Json.Obj(Json.Get(d, "tool_input"))) },
-                { "tuid", Json.Str(d, "tool_use_id") }
-            };
+            if (Audit.Skipped(tool, ev)) return;
+            string tuid = Json.Str(d, "tool_use_id");
+            var fields = new Dictionary<string, object> { { "sess", id }, { "tool", tool }, { "tuid", tuid } };
+            if (Audit.NeedsObj(ev, tuid)) fields["obj"] = Audit.Summarize(tool, Json.Obj(Json.Get(d, "tool_input")));
             // Action faite par un sous-agent : son identifiant (rapport d'audit par agent).
             string agent = Json.Str(d, "agent_id");
             if (!string.IsNullOrEmpty(agent)) fields["agent"] = agent;
@@ -225,12 +222,10 @@ static class NotchHook
             string dec = string.IsNullOrEmpty(reply) ? "claude"
                        : reply.Contains("\"behavior\":\"deny\"") ? "deny"
                        : reply.Contains("updatedPermissions") ? "always" : "allow";
-            Audit.Write(Root, "decision", new Dictionary<string, object>
-            {
-                { "sess", id }, { "tool", tool },
-                { "obj", Audit.Summarize(tool, Json.Obj(Json.Get(d, "tool_input"))) },
-                { "tuid", Json.Str(d, "tool_use_id") }, { "dec", dec }
-            });
+            string tuid = Json.Str(d, "tool_use_id");
+            var fields = new Dictionary<string, object> { { "sess", id }, { "tool", tool }, { "tuid", tuid }, { "dec", dec } };
+            if (Audit.NeedsObj("decision", tuid)) fields["obj"] = Audit.Summarize(tool, Json.Obj(Json.Get(d, "tool_input")));
+            Audit.Write(Root, "decision", fields);
         }
         catch { }
     }

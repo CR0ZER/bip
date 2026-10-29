@@ -74,10 +74,13 @@ namespace ClaudeNotch
         static Dictionary<string, string> SessionTitles(IEnumerable<string> ids)
         {
             var titles = new Dictionary<string, string>();
-            try
+            string[] projects;
+            try { projects = Directory.GetDirectories(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "projects")); }
+            catch { projects = new string[0]; }
+            foreach (var id in ids)
             {
-                var projects = Directory.GetDirectories(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "projects"));
-                foreach (var id in ids)
+                // Un identifiant illisible (caractere invalide) ne prive pas les autres sessions de leur titre.
+                try
                 {
                     var known = TranscriptOf(id);
                     var title = known == null ? null : Agents.Title(known);
@@ -91,8 +94,8 @@ namespace ClaudeNotch
                         break;
                     }
                 }
+                catch { }
             }
-            catch { }
             return titles;
         }
 
@@ -191,6 +194,9 @@ summary .chev{color:var(--muted);transition:transform .15s}details[open] summary
 .agent-head{padding:6px 12px;font-size:13px;font-weight:600;color:var(--green)}
 .agent-head span{color:var(--muted);font-weight:400;font-size:12px;margin-left:8px}
 .agent .row{padding-left:12px;grid-template-columns:52px 92px minmax(0,1fr) 210px 70px}
+details.rep>summary{display:block;padding:0}
+.rep-n{display:inline-block;margin-left:8px;padding:0 7px;border-radius:999px;font-size:11.5px;font-family:inherit;color:var(--muted);background:var(--soft)}
+details.rep[open]>summary .rep-n{color:var(--ink)}
 .empty{color:var(--muted);text-align:center;padding:40px}
 footer{color:var(--muted);padding:0 32px 32px;font-size:12px;line-height:1.6}
 @media (max-width:820px){.row,.agent .row{grid-template-columns:52px 1fr}.row .o{grid-column:1/-1}.row>div:nth-child(4),.row>div:nth-child(5){grid-column:auto}summary .meta{display:none}}
@@ -246,9 +252,9 @@ function tiles(rows) {
 }
 
 const pill = d => d.startsWith('refus') ? 'ko' : d.startsWith('autoris') || d.startsWith('règle') ? 'ok' : 'na';
-const line = (r, sub) => `<div class='row'><div class='t'>${esc(r.t.slice(11, sub ? 16 : 16))}</div>`
+const line = (r, n) => `<div class='row'><div class='t'>${esc(r.t.slice(11, 16))}</div>`
   + `<div><span class='chip k-${r.k}' title='${esc(r.tool)}'>${KIND[r.k] || 'outil'}</span></div>`
-  + `<div class='o mono' title='${esc(r.of)}'>${esc(r.o)}</div>`
+  + `<div class='o mono' title='${esc(r.of)}'>${esc(r.o)}${n > 1 ? `<span class='rep-n'>×${n}</span>` : ''}</div>`
   + `<div><div class='pill ${pill(r.dec)}'>${esc(r.dec)}</div><div class='via'>${esc(r.via)}</div></div>`
   + `<div class='res ${r.res === 'échoué' ? 'ko' : ''}' title='${esc(r.who)}'>${esc(r.res)}</div></div>`;
 
@@ -258,27 +264,37 @@ function count(list, agent) {
   return list.length + ' action' + (list.length > 1 ? 's' : '') + (hidden ? ' · ' + hidden + ' lecture' + (hidden > 1 ? 's' : '') + ' masquée' + (hidden > 1 ? 's' : '') : '');
 }
 
+// Actions identiques qui se suivent (meme outil, objet, decision, resultat, meme jour) : une
+// ligne '×N', depliable pour voir chaque occurrence. Jamais pour un lancement de sous-agent.
+const same = (a, b) => b && a.k !== 'agent' && a.tool === b.tool && a.of === b.of && a.dec === b.dec && a.res === b.res && a.t.slice(0, 10) === b.t.slice(0, 10);
+const run = (list, i) => { let j = i + 1; while (j < list.length && same(list[i], list[j])) j++; return j; };
+const group = g => g.length === 1 ? line(g[0])
+  : `<details class='rep'><summary>${line(g[0], g.length)}</summary>${g.slice(1).map(x => line(x)).join('')}</details>`;
+const lines = list => { let h = ''; for (let i = 0; i < list.length;) { const j = run(list, i); h += group(list.slice(i, j)); i = j; } return h; };
+
 function block(id, rows, open) {
   // Agent principal en tete ; chaque lancement de sous-agent suivi de ses actions, en retrait.
   const subs = {}; rows.filter(r => r.a).forEach(r => (subs[r.a] = subs[r.a] || []).push(r));
   const shownSubs = new Set(); let html = '', lastDay = '';
   const multi = rows[0].t.slice(0, 10) !== rows[rows.length - 1].t.slice(0, 10);
-  rows.filter(r => !r.a).forEach(r => {
+  const main = rows.filter(r => !r.a);
+  for (let i = 0; i < main.length;) {
+    const r = main[i], j = run(main, i);
     // Session etalee sur plusieurs jours : un separateur a chaque changement de jour.
     if (multi && r.t.slice(0, 10) !== lastDay) {
       lastDay = r.t.slice(0, 10);
       html += `<div class='dayh'>${new Date(lastDay + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</div>`;
     }
-    html += line(r);
+    html += group(main.slice(i, j));
     if (r.k === 'agent' && r.sp) {
       shownSubs.add(r.sp);
       const list = subs[r.sp] || [];
-      html += `<div class='agent'><div class='agent-head'>↳ ${esc(r.o)}<span>${count(list, r.sp)}</span></div>`
-        + list.map(x => line(x, true)).join('') + `</div>`;
+      html += `<div class='agent'><div class='agent-head'>↳ ${esc(r.o)}<span>${count(list, r.sp)}</span></div>` + lines(list) + `</div>`;
     }
-  });
+    i = j;
+  }
   Object.keys(subs).filter(a => !shownSubs.has(a)).forEach(a => {
-    html += `<div class='agent'><div class='agent-head'>↳ Sous-agent<span>${count(subs[a], a)}</span></div>` + subs[a].map(x => line(x, true)).join('') + `</div>`;
+    html += `<div class='agent'><div class='agent-head'>↳ Sous-agent<span>${count(subs[a], a)}</span></div>` + lines(subs[a]) + `</div>`;
   });
   const first = rows[0].t, last = rows[rows.length - 1].t;
   const when = first.slice(0, 10) === last.slice(0, 10) ? first.slice(8, 10) + '/' + first.slice(5, 7) + ' · ' + first.slice(11, 16) + ' → ' + last.slice(11, 16)

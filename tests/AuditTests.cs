@@ -128,6 +128,28 @@ static class AuditTests
         }
         finally { Clean(root); }
 
+        Console.WriteLine("Journal allege");
+        Check("outils internes non enregistres", Audit.Skipped("AskUserQuestion", "outil") && Audit.Skipped("mcp__ccd_turn__update_plan", "outil") && Audit.Skipped("SubagentHandback", "fait"));
+        Check("lecture : l'action oui, le resultat non", !Audit.Skipped("Read", "outil") && Audit.Skipped("Read", "fait") && !Audit.Skipped("Read", "echec"));
+        Check("commande : tout est enregistre", !Audit.Skipped("Bash", "outil") && !Audit.Skipped("Bash", "fait"));
+        Check("objet sur l'action seulement (identifiant present)", Audit.NeedsObj("outil", "t1") && !Audit.NeedsObj("fait", "t1") && !Audit.NeedsObj("decision", "t1"));
+        Check("objet garde sans identifiant, et pour un refus auto", Audit.NeedsObj("fait", null) && Audit.NeedsObj("refus-auto", "t1"));
+        var longCmd = Audit.Summarize("Bash", new Dictionary<string, object> { { "command", new string('a', 1200) } });
+        Check("objet plafonne a 500 caracteres, longueur notee", longCmd.StartsWith(new string('a', 500) + " … +700 caractères"));
+        root = Path.Combine(Path.GetTempPath(), "bip-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            Audit.Write(root, "outil", new Dictionary<string, object> { { "sess", "s" }, { "tool", "Bash" }, { "obj", "npm test" }, { "tuid", "c1" }, { "mode", "default" } });
+            Audit.Write(root, "fait", new Dictionary<string, object> { { "sess", "s" }, { "tool", "Bash" }, { "tuid", "c1" } });
+            Audit.Write(root, "outil", new Dictionary<string, object> { { "sess", "s" }, { "tool", "Read" }, { "obj", "C:\\p\\.env" }, { "tuid", "r1" }, { "mode", "default" } });
+            var rows = Audit.Rows(root, 1);
+            Check("resultat sans objet rattache par l'identifiant", rows.Count == 2 && rows[0].Obj == "npm test" && rows[0].Outcome == "réussi");
+            Check("lecture sans resultat : autorisee d'office", rows[1].Decision == "autorisé d'office" && rows[1].Outcome == "—");
+            Check("dossier au caractere invalide : pas d'exception", new AuditRow { Dir = "C:\\dev\u0007x\\api" }.Project == "api");
+        }
+        finally { Clean(root); }
+
         Console.WriteLine("Lecteur JSON");
         var o = Json.Obj(Json.Parse("{\"a\":\"\\u00e9t\\u00e9 \\\"x\\\"\\n\",\"n\":42,\"big\":12345678901,\"f\":1.5e2,\"neg\":-3,\"t\":true,\"z\":null,\"arr\":[1,{\"b\":[]}],\"e\":{}}"));
         Check("chaine avec echappements", Json.Str(o, "a") == "été \"x\"\n");

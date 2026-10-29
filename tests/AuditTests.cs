@@ -218,6 +218,13 @@ static class AuditTests
         }
         finally { foreach (var f in Directory.GetFiles(root, "*", SearchOption.AllDirectories)) File.SetAttributes(f, FileAttributes.Normal); Clean(root); }
 
+        Console.WriteLine("Mises a jour");
+        Check("tag lu dans la reponse", Update.TagOf("{\"tag_name\":\"v0.4.1\",\"html_url\":\"https://ailleurs.example\",\"assets\":[]}") == "0.4.1");
+        Check("tag inattendu refuse", Update.TagOf("{\"tag_name\":\"v1.0.0-rc1\"}") == null && Update.TagOf("{\"tag_name\":\"<script>\"}") == null);
+        Check("reponse illisible : rien", Update.TagOf("<html>limite atteinte</html>") == null && Update.TagOf("{}") == null);
+        Check("comparaison de versions", Update.Newer("0.4.1", "0.4.0") && Update.Newer("0.10.0", "0.9.9") && !Update.Newer("0.4.0", "0.4.0")
+                                         && !Update.Newer("0.3.9", "0.4.0") && !Update.Newer(null, "0.4.0"));
+
         Console.WriteLine("Lecteur JSON");
         var o = Json.Obj(Json.Parse("{\"a\":\"\\u00e9t\\u00e9 \\\"x\\\"\\n\",\"n\":42,\"big\":12345678901,\"f\":1.5e2,\"neg\":-3,\"t\":true,\"z\":null,\"arr\":[1,{\"b\":[]}],\"e\":{}}"));
         Check("chaine avec echappements", Json.Str(o, "a") == "été \"x\"\n");

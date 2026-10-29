@@ -182,7 +182,13 @@ namespace ClaudeNotch
             // Bouton de reglages : trois traits en haut a droite, visible encoche depliee.
             var lines = new StackPanel { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
             for (int i = 0; i < 3; i++) lines.Children.Add(new Rectangle { Width = 12, Height = 1.5, Fill = Muted, Margin = new Thickness(0, 1.5, 0, 1.5), RadiusX = 0.75, RadiusY = 0.75 });
-            _menuBtn = new Border { Width = 26, Height = 18, CornerRadius = new CornerRadius(5), Background = Brushes.Transparent, Child = lines,
+            // Point vert : une nouvelle version est disponible.
+            _updDot = new Ellipse { Width = 5, Height = 5, Fill = OnGreen, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top,
+                                    Margin = new Thickness(0, 2, 3, 0), Visibility = Visibility.Collapsed };
+            var menuIcon = new Grid();
+            menuIcon.Children.Add(lines);
+            menuIcon.Children.Add(_updDot);
+            _menuBtn = new Border { Width = 26, Height = 18, CornerRadius = new CornerRadius(5), Background = Brushes.Transparent, Child = menuIcon,
                                     HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 3, 9, 0),
                                     ToolTip = "Réglages", Opacity = 0, Visibility = Visibility.Collapsed };
             Clickable(_menuBtn, ToggleSettings, () => true);
@@ -230,6 +236,7 @@ namespace ClaudeNotch
             Sessions.Purge(Program.StateDir);
             Journal.Purge();
             Audit.Purge(Program.Root, Audit.KeepDays);
+            AutoUpdate();
 
             new PipeServer(
                 p => Dispatcher.BeginInvoke((Action)(() => { _pending.Add(p); Refresh(); Peek(p); })),
@@ -580,6 +587,7 @@ namespace ClaudeNotch
                 FadeTo(_menuBtn, 1, 180, 250);
                 _todoAdding = false;
                 foreach (var v in _views) if (!v.S.IsRun) GitRead(v.S.Dir, false);
+                AutoUpdate();
                 _todoBtn.Visibility = Visibility.Visible;
                 FadeTo(_todoBtn, 1, 180, 250);
                 FadeTo(_row, 0, 100, 0);
@@ -1078,7 +1086,7 @@ namespace ClaudeNotch
             string sig = string.Join(";", _views.Select(v => v.S.Id + ":" + v.State + ":" + v.S.Display + ":" + v.Pending.Count + ":"
                                                          + string.Join(",", VisibleAgents(v.S).Select(a => a.Tuid + (a.End != null ? "+" : "")))))
                        + "|" + string.Join(",", _pending.Select(p => p.GetHashCode()))
-                       + "|" + (_settingsOpen ? Quiet + ":" + _cfg.AutoDnd + ":" + _cfg.Flash + ":" + Rules.Created().Count : "")
+                       + "|" + (_settingsOpen ? Quiet + ":" + _cfg.AutoDnd + ":" + _cfg.Flash + ":" + _cfg.UpdateAuto + ":" + _updText + ":" + Rules.Created().Count : "")
                        + "|" + (Quiet ? DndWhy() : "")
                        + "|" + Todo.Sig(Program.Root) + ":" + _cfg.TodoOpen + ":" + _todoAdding + ":" + string.Join(",", _todoDone.Keys)
                        + "|" + _gitVer + ":" + string.Join(",", _gitOpen);
@@ -1148,9 +1156,12 @@ namespace ClaudeNotch
         // ------------------------------------------------------------ reglages (bouton en haut a droite)
 
         readonly Border _menuBtn;
+        readonly Ellipse _updDot;
+        string _updText;                           // resultat de la verification, dans le pied des reglages
+        bool _updBusy;
         readonly Border _todoBtn;                  // a gauche du bouton de reglages : la to-do
         readonly TextBlock _todoCount;
-        bool _todoAdding, _todoFocus;              // champ "+ ajouter" ouvert ; a focaliser (une seule fois, apres le clic)
+        bool _todoAdding, _todoFocus;              // champ "+ Ajouter à la todo liste" ouvert ; a focaliser (une seule fois, apres le clic)
         readonly Dictionary<string, DateTime> _todoDone = new Dictionary<string, DateTime>();   // cochees, effacees 3 s apres
         FrameworkElement _settingsEl;
 
@@ -1200,6 +1211,12 @@ namespace ClaudeNotch
                 if (!_cfg.AutoDnd && _autoDnd) { _autoDnd = false; QuietChanged(); }
             }));
             p.Children.Add(Toggle("Faire clignoter Claude", "quand une demande attend depuis 5 min", _cfg.Flash, () => { _cfg.Flash = !_cfg.Flash; _cfg.Save(); }));
+            p.Children.Add(Toggle("Vérifier les mises à jour chaque jour", "une requête vers GitHub, rien n'est téléchargé", _cfg.UpdateAuto, () =>
+            {
+                _cfg.UpdateAuto = !_cfg.UpdateAuto;
+                _cfg.Save();
+                AutoUpdate();
+            }));
 
             p.Children.Add(Section("Traçabilité"));
             p.Children.Add(Link("Journal d'audit", "ce que les agents ont fait, et qui l'a autorisé", "↗", () =>
@@ -1223,9 +1240,19 @@ namespace ClaudeNotch
                 }, true));
             }
 
-            // Pied : version a gauche, actions secondaires a droite.
-            var foot = new DockPanel { Margin = new Thickness(0, 10, 0, 0), LastChildFill = false };
-            foot.Children.Add(new TextBlock { Text = "Bip v" + AppVersion.Text, FontSize = 11.5, Foreground = Muted, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) });
+            // Pied : la version et la verification des mises a jour, puis les actions secondaires.
+            var foot = new DockPanel { Margin = new Thickness(0, 2, 0, 0), LastChildFill = false };
+            var left = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
+            left.Children.Add(new TextBlock { Text = "Bip v" + AppVersion.Text, FontSize = 11.5, Foreground = Muted, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 2, 0) });
+            bool newer = _updDot.Visibility == Visibility.Visible;
+            var upd = Small(_updText ?? "Vérifier les mises à jour", () =>
+            {
+                if (newer) { try { System.Diagnostics.Process.Start(Update.Page); } catch { } }   // adresse fixe, jamais lue dans la reponse
+                else CheckUpdate();
+            });
+            if (newer) ((TextBlock)((Border)upd).Child).Foreground = OnGreen;
+            left.Children.Add(upd);
+            p.Children.Add(left);
             var actions = new StackPanel { Orientation = Orientation.Horizontal };
             DockPanel.SetDock(actions, Dock.Right);
             actions.Children.Add(Small("Dossier d'état", () => { try { System.Diagnostics.Process.Start("explorer.exe", Program.StateDir); } catch { } }));
@@ -1298,6 +1325,38 @@ namespace ClaudeNotch
             return b;
         }
 
+        // ------------------------------------------------------------ mises a jour
+
+        // Option activee : une fois par jour au plus, au demarrage ou a l'ouverture de l'encoche.
+        void AutoUpdate()
+        {
+            string today = DateTime.Now.ToString("yyyy-MM-dd");
+            if (!_cfg.UpdateAuto || _cfg.UpdateDay == today) return;
+            _cfg.UpdateDay = today;
+            _cfg.Save();
+            CheckUpdate();
+        }
+
+        void CheckUpdate()
+        {
+            if (_updBusy) return;
+            _updBusy = true;
+            _updText = "vérification…";
+            if (_settingsOpen) Redraw();
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                var latest = Update.Latest();
+                Dispatcher.BeginInvoke((Action)(() =>
+                {
+                    _updBusy = false;
+                    bool newer = Update.Newer(latest, AppVersion.Text);
+                    _updDot.Visibility = newer ? Visibility.Visible : Visibility.Collapsed;
+                    _updText = latest == null ? "vérification impossible" : newer ? "v" + latest + " disponible ↗" : "à jour";
+                    if (_settingsOpen) Redraw();
+                }));
+            });
+        }
+
         // ------------------------------------------------------------ encoche vide
 
         static readonly string[] Morning = { "Bonjour ! C'est Bip.", "Bonjour, Bip au rapport.", "Salut ! Bip veille sur tes sessions." };
@@ -1354,7 +1413,7 @@ namespace ClaudeNotch
             Redraw();
         }
 
-        // Les taches (au plus "max", puis "+N"), et "+ ajouter". Liste vide : "+ ajouter" seul, discret.
+        // Les taches (au plus "max", puis "+N"), et le bouton d'ajout. Liste vide : le bouton seul, discret.
         FrameworkElement TodoBlock(int max)
         {
             var p = new StackPanel { Background = Brushes.Transparent, Cursor = Cursors.Arrow };
@@ -1412,13 +1471,13 @@ namespace ClaudeNotch
             Redraw();
         }
 
-        // "+ ajouter", ou le champ de saisie : Entree ajoute, Echap annule.
+        // "+ Ajouter à la todo liste", ou le champ de saisie : Entree ajoute, Echap annule.
         FrameworkElement TodoAdd(bool discreet)
         {
             if (!_todoAdding)
             {
                 var b = new Border { Padding = new Thickness(6, 4, 8, 4), CornerRadius = new CornerRadius(6), Background = Brushes.Transparent, HorizontalAlignment = HorizontalAlignment.Left,
-                                     Child = new TextBlock { Text = "+ ajouter", FontSize = 12, Foreground = Muted, Opacity = discreet ? 0.7 : 1 } };
+                                     Child = new TextBlock { Text = "+ Ajouter à la todo liste", FontSize = 12, Foreground = Muted, Opacity = discreet ? 0.7 : 1 } };
                 Clickable(b, () => { _todoAdding = _todoFocus = true; Redraw(); }, SettingsArmed);
                 return b;
             }

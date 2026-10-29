@@ -100,6 +100,8 @@ namespace ClaudeNotch
         public bool Dnd { get { return DateTime.Now < DndUntil; } }
         public bool AutoDnd = true;      // sourdine automatique pendant les appels
         public bool TodoOpen;            // to-do depliee dans l'encoche
+        public bool UpdateAuto;          // verifier les mises a jour chaque jour (desactive par defaut)
+        public string UpdateDay = "";    // derniere verification automatique, yyyy-MM-dd
 
         public Config(string path)
         {
@@ -116,6 +118,8 @@ namespace ClaudeNotch
                     else if (k == "dnd") { long t; if (long.TryParse(v, out t)) DndUntil = new DateTime(t); }
                     else if (k == "autodnd") AutoDnd = v != "0";
                     else if (k == "todo") TodoOpen = v == "1";
+                    else if (k == "maj") UpdateAuto = v == "1";
+                    else if (k == "majle") UpdateDay = v;
                 }
             }
             catch { }
@@ -128,7 +132,9 @@ namespace ClaudeNotch
                 File.WriteAllText(_path, "flash=" + (Flash ? "1" : "0") + Environment.NewLine +
                                          "dnd=" + DndUntil.Ticks + Environment.NewLine +
                                          "autodnd=" + (AutoDnd ? "1" : "0") + Environment.NewLine +
-                                         "todo=" + (TodoOpen ? "1" : "0") + Environment.NewLine);
+                                         "todo=" + (TodoOpen ? "1" : "0") + Environment.NewLine +
+                                         "maj=" + (UpdateAuto ? "1" : "0") + Environment.NewLine +
+                                         "majle=" + UpdateDay + Environment.NewLine);
             }
             catch { }
         }

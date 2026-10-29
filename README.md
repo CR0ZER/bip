@@ -38,8 +38,10 @@ Bip tourne en permanence à côté de ton travail : il doit se faire oublier, su
 
 - **Un seul processus permanent**, `ClaudeNotch.exe`. Le hook `NotchHook.exe` ne vit que le temps
   d'un appel, en arrière-plan, sans jamais ralentir Claude.
-- **Aucune dépendance** : ni SDK, ni bibliothèque externe, ni accès réseau. Tout est compilé par
-  le `csc.exe` livré avec Windows.
+- **Aucune dépendance** : ni SDK, ni bibliothèque externe. Tout est compilé par le `csc.exe` livré
+  avec Windows.
+- **Aucun accès réseau**, sauf la vérification des mises à jour, quand tu la demandes : une
+  requête vers GitHub, qui ne lit que le numéro de la dernière version.
 - **Un affichage sobre** : rendu logiciel, animations en boucle à 8 images/s encoche repliée
   (15 dépliée), éclat seulement quand quelqu'un attend, fenêtre à la taille de l'encoche, et rien
   ne s'anime une fois caché.
@@ -159,8 +161,8 @@ priorités, ni projets.
 - **Dans l'encoche vide**, sous le bilan du jour : les 3 premières tâches, puis « +N autres ».
 - **Avec des sessions** : la case en haut de l'encoche dépliée (avec le nombre de tâches) déplie
   la liste sous les sessions.
-- **« + ajouter »**, Entrée pour valider. **Cocher** une tâche la barre 3 s, puis l'efface ; un
-  second clic pendant ce délai annule.
+- **« + Ajouter à la todo liste »**, Entrée pour valider. **Cocher** une tâche la barre 3 s, puis
+  l'efface ; un second clic pendant ce délai annule.
 - **Depuis un terminal** : `bip todo "Régénérer la clé de staging"`. Claude peut s'en servir aussi
   si tu le lui demandes (« note dans ma to-do Bip… ») : la commande passe toujours par une demande
   d'autorisation, et Bip ne propose jamais de règle pour elle.
@@ -241,6 +243,12 @@ installer.cmd
 `~/.claude/settings.json` (une sauvegarde datée est faite à côté), ajoute le dossier de Bip à
 ton `PATH` (pour `bip run`), ajoute l'encoche au démarrage de Windows et la lance. Il peut être relancé sans risque.
 
+**Savoir qu'une version est sortie** : dans les réglages (☰), « Vérifier les mises à jour » à côté
+du numéro de version. Bip interroge GitHub et répond « à jour » ou « v0.4.1 disponible ↗ », qui
+ouvre la page des releases. L'option « Vérifier les mises à jour chaque jour » (désactivée par
+défaut) le fait seule, une fois par jour au plus ; un point vert sur le ☰ signale alors une
+nouvelle version. Bip ne télécharge ni n'installe jamais rien.
+
 **Mettre à jour** : remplace le contenu du dossier par la nouvelle version, puis relance
 `installer.cmd`. Il ajoute les hooks apparus entre-temps (en 0.3.0 : `SubagentStart` et
 `SubagentStop`, pour les sous-agents) ; ton journal d'audit et tes réglages sont conservés.
@@ -305,6 +313,7 @@ src/
   BipCli.cs       bip.exe : bip run <commande>, bip todo "texte"
   Todo.cs         micro to-do list (todo.txt)
   Git.cs          lecture de Git (branche, fichiers, commits à pousser)
+  Update.cs       vérification des mises à jour (GitHub)
   Audit.cs        journal d'audit : écriture chaînée, masquage, lecture
   Rules.cs        règles suggérées
   Report.cs       rapport d'audit HTML
@@ -364,8 +373,10 @@ Bip runs all day next to your work: it has to go unnoticed, on any PC.
 
 - **A single long-running process**, `ClaudeNotch.exe`. The `NotchHook.exe` hook only lives for
   one call, in the background, and never slows Claude down.
-- **No dependencies**: no SDK, no external library, no network access. Everything is built with
-  the `csc.exe` that ships with Windows.
+- **No dependencies**: no SDK, no external library. Everything is built with the `csc.exe` that
+  ships with Windows.
+- **No network access**, except the update check, when you ask for it: one request to GitHub that
+  only reads the latest version number.
 - **A frugal display**: software rendering, looping animations at 8 fps in the collapsed notch
   (15 when open), glow only while someone is waiting, a window sized to the notch, and nothing
   keeps animating once hidden.
@@ -482,8 +493,8 @@ projects.
 - **In the empty notch**, under today's summary: the first 3 tasks, then "+N".
 - **With sessions**: the box at the top of the open notch (with the task count) shows the list
   under the sessions.
-- **"+ ajouter"** (add), Enter to confirm. **Ticking** a task strikes it out for 3 s, then removes
-  it; a second click within that delay cancels.
+- **"+ Ajouter à la todo liste"** (add to the to-do list), Enter to confirm. **Ticking** a task
+  strikes it out for 3 s, then removes it; a second click within that delay cancels.
 - **From a terminal**: `bip todo "Rotate the staging key"`. Claude can use it too if you ask it
   to: the command always goes through a permission request, and Bip never suggests a rule for it.
 - Tasks live in `todo.txt`, in Bip's folder, one per line, editable by hand.
@@ -560,6 +571,12 @@ installer.cmd
 notch to Windows startup and launches it. It is
 safe to run again.
 
+**Knowing a new version is out**: in the settings (☰), "Vérifier les mises à jour" (check for
+updates) next to the version number. Bip asks GitHub and answers "à jour" (up to date) or "v0.4.1
+disponible ↗", which opens the releases page. The "Vérifier les mises à jour chaque jour" option
+(off by default) does it on its own, at most once a day; a green dot on the ☰ then flags a new
+version. Bip never downloads or installs anything.
+
 **Updating**: replace the folder's content with the new version, then run `installer.cmd` again.
 It adds any hooks introduced since (in 0.3.0: `SubagentStart` and `SubagentStop`, for
 sub-agents); your audit log and settings are kept.
@@ -622,6 +639,7 @@ src/
   BipCli.cs       bip.exe: bip run <command>, bip todo "text"
   Todo.cs         micro to-do list (todo.txt)
   Git.cs          Git reading (branch, files, commits to push)
+  Update.cs       update check (GitHub)
   Audit.cs        audit log: chained writes, masking, reading
   Rules.cs        suggested rules
   Report.cs       HTML audit report

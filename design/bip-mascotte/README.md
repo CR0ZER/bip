@@ -19,10 +19,10 @@ l'explique ; l'application l'applique dans [`src/Bip.cs`](../../src/Bip.cs) et
 
 | Chemin | Rôle |
 |---|---|
-| `svg/bip-*.svg` | Les 5 états en vectoriel, fond transparent, grille 32 × 32. |
+| `svg/bip-*.svg` | Les 5 états et le Bip endormi (« ne pas déranger ») en vectoriel, fond transparent, grille 32 × 32. |
 | `svg/bip-coucou.svg` | Bip qui fait coucou, animé (SVG natif, s'affiche aussi dans une page GitHub). |
-| `png/{16,20,40,256}/bip-*.png` | Les 5 états rendus à chaque taille d'affichage, fond transparent. |
-| `apercu-planche.png` | Les 5 états à 128, 40, 20 et 16 px sur fond noir. |
+| `png/{16,20,40,256}/bip-*.png` | Les mêmes, rendus à chaque taille d'affichage, fond transparent. |
+| `apercu-planche.png` | Les 5 états et le Bip endormi à 128, 40, 20 et 16 px sur fond noir. |
 | `apercu-anime.html` | À ouvrir dans un navigateur pour voir les mouvements. |
 | `tokens.json` | Toutes les valeurs : géométrie, couleurs, typographie, encoche, durées et courbes. |
 | `wpf/` | Bip en contrôle WPF autonome (XAML + C#), pour le réutiliser dans une autre application. L'encoche utilise son portage en C# pur, sans XAML. |
@@ -35,13 +35,18 @@ l'explique ; l'application l'applique dans [`src/Bip.cs`](../../src/Bip.cs) et
 | <img src="png/40/bip-en-cours.png" width="32" alt=""> | **En cours** | Claude réfléchit, lit, exécute | `#F5A524` | Yeux plissés en traits, antenne droite | Flottement doux |
 | <img src="png/40/bip-pret.png" width="32" alt=""> | **Prêt** | Claude a fini et rend la main | `#3FD07F` | Yeux rieurs, sourire | Un saut à l'arrivée, puis immobile ; s'efface au bout de 4 min |
 | <img src="png/40/bip-erreur.png" width="32" alt=""> | **Erreur** | Le tour s'est arrêté sur une erreur de l'API | `#8E96A3` + pastille `#FFC93D` | **Pastille « ! »**, corps tassé, petits yeux | Affaissement à l'entrée, puis figé |
-| <img src="png/40/bip-inactif.png" width="32" alt=""> | **Au repos** | Session ouverte, rien demandé encore | `#4A4A4E` | Yeux fermés, **antenne pliée** | Aucun |
+| <img src="png/40/bip-inactif.png" width="32" alt=""> | **Inactif** | Session ouverte, rien demandé encore | `#4A4A4E` | Yeux fermés, **antenne pliée** | Aucun |
 
 L'attente est le seul état rouge et le seul qui bouge sans arrêt : c'est ce qui le fait ressortir
 en vision périphérique. L'erreur est volontairement grise pour ne pas se confondre avec elle.
 
 **Bip neutre** (`#DAD6CF`, blanc cassé) : quand plus aucune session ne tourne, Bip se réveille
 dans l'encoche vide, sourit et salue. Il flotte comme en cours, et réagit quand on clique dessus.
+
+<img src="png/40/bip-ne-pas-deranger.png" width="32" alt="" align="left"> **Bip endormi**
+(`#6C9EFF`, deux « z » `#9DBBFF`) : le mode « ne pas déranger », qui n'est pas un état de session.
+Yeux fermés, **antenne en croissant de lune**, deux « z » ; il se distingue de l'inactif par le
+bleu et les « z », même sans la couleur. Il ne réagit pas au clic : il dort.
 
 ## Mouvements
 
@@ -58,7 +63,8 @@ entre les pieds.
 | En cours, neutre | Translation Y 0 → −2 u et rotation −2° ↔ +2°, cycle 3,2 s, SineEase InOut. Départ décalé de 0 à 1 s au hasard : plusieurs Bip ne flottent pas en phase. |
 | Prêt | Une seule fois : tassement à 90 ms (X 1,06 / Y 0,90), montée jusqu'à 270 ms (Y −6 u, X 0,96 / Y 1,05, QuadraticEase Out), réception à 390 ms (X 1,08 / Y 0,90, QuadraticEase In), repos à 510 ms. |
 | Erreur | Affaissement X 1,04 / Y 0,94 en 250 ms (QuadraticEase Out), pastille 0 → 1 en 200 ms (BackEase Out), puis figé. |
-| Au repos | L'antenne se plie (fondu 400 ms), puis plus rien. |
+| Inactif | L'antenne se plie (fondu 400 ms), puis plus rien. |
+| Ne pas déranger | Entrée : antenne en lune, yeux fermés et « z » en fondu 400 ms. Sommeil : X 1 → 1,01, Y 1 → 1,03, cycle 4 s, SineEase InOut. « z » : 3 s chacun, opacité 0 → 1 (0,9 s) → 1 (2,1 s) → 0, Y +1 → −1,5 u ; le second décalé de 1,5 s. En pose fixe, les « z » restent visibles. |
 | Changement d'état | Couleur interpolée en 250 ms, visages en fondu croisé en 150 ms. |
 | Clic sur Bip | Au hasard : le saut de « prêt », un clignement d'yeux (120 ms), ou un signe du bras (deux allers-retours de 180 ms). |
 | Coucou (`bip-coucou.svg`) | Deux signes du bras (−16° ↔ +12°), une pause, un clignement ; cycle 3,2 s. |
@@ -82,17 +88,17 @@ Deux congés concaves de 8 px le raccordent au bord de l'écran (à gauche `M0,0
 | Forme | Dimensions | Contenu |
 |---|---|---|
 | Trait | 120 × 4 px, rayon bas 2 | Rien : aucune session active. |
-| Repliée | hauteur 22 px, marge latérale 10, rayon bas 11 | Bip à 16 px, écart 6 px, au plus 5 puis « +N », dans l'ordre de lancement des sessions. Un ☾ quand « ne pas déranger » est actif. Les clics traversent. |
-| Entrouverte | 60 px de haut, 320 à 440 px de large selon le nom, rayon bas 20, marges 12 / 18 | Bip 40 px + « `Migrations staging` attend ta réponse » (titre du chat ; 13/18 semibold) + type de demande (12/16, `#A3A3A3`). Reste 4 s. |
-| Dépliée | 440 px de large, marges 12 (20 en haut), rayon bas 24 | Bouton ☰ en haut à droite ; en haut à gauche, « ☾ jusqu'à 17:18 » (11,5, `#A3A3A3`) quand « ne pas déranger » est actif. Cartes de demande en tête (fond `#161616`, rayon 14, marge 14), puis lignes de session de 36 px (Bip 20 px, « titre · dossier/ » en Cascadia Mono 12,5, état et durée à droite) séparées par `#1C1C1C` ; 48 px avec le récap de fin de tour (11,5, `#3FD07F`). Sous-agents : sous-lignes de 24 px en retrait de 34 px, « ↳ description » (12) et durée, vertes une minute une fois finies ; 5 au plus, puis « +N autres ». Les réglages s'ajoutent en dessous, après un trait `#2A2A2A`. |
+| Repliée | hauteur 22 px, marge latérale 10, rayon bas 11 | Bip à 16 px, écart 6 px, au plus 5 puis « +N », dans l'ordre de lancement des sessions. En « ne pas déranger » : seulement le Bip endormi à 16 px, à la place des Bip des sessions. Les clics traversent. |
+| Entrouverte | 60 px de haut, 320 à 440 px de large selon le nom, rayon bas 20, marges 12 / 18 | Bip 40 px + « `Migrations staging` attend ta réponse » (titre du chat ; 13/18 semibold) + type de demande (12/16, `#BDBDBD`). Reste 4 s. |
+| Dépliée | 440 px de large, marges 12 (20 en haut), rayon bas 24 | Bouton ☰ en haut à droite. En « ne pas déranger » avec des sessions, un bandeau en tête : fond `#111A2B`, rayon 14, marges 12 / 14, Bip endormi 32 px, « Ne pas déranger » (14/20 semibold, `#F2F2F2`), « jusqu'à 17:18 · alertes en pause » ou « appel en cours (Teams) · alertes en pause » (12/16, `#A9B8D6`), bouton « Reprendre » (hauteur 32, rayon 8, fond `#1F2B44`) ; les Bip des sessions gardent leur couleur mais ne bougent plus. Encoche vide : le grand Bip s'endort, et « jusqu'à 17:18 » avec le Bip endormi en haut à gauche (11,5, `#BDBDBD`). Cartes de demande en tête (fond `#161616`, rayon 14, marge 14), puis lignes de session de 36 px (Bip 20 px, « titre · dossier/ » en Cascadia Mono 12,5, état et durée à droite) séparées par `#1C1C1C` ; 48 px avec le récap de fin de tour (11,5, `#3FD07F`). Sous-agents : sous-lignes de 24 px en retrait de 34 px, « ↳ description » (12) et durée, vertes une minute une fois finies ; 5 au plus, puis « +N autres ». Les réglages s'ajoutent en dessous, après un trait `#2A2A2A`. |
 
 **Carte de permission** : Bip 40 px + nom du projet (Cascadia Mono 13) + « attend depuis 2 min »
-(12, `#A3A3A3`) ; question 14/20 semibold ; commande en Cascadia Mono 12/18 sur fond `#000`,
+(12, `#BDBDBD`) ; question 14/20 semibold ; commande en Cascadia Mono 12/18 sur fond `#000`,
 bordure `#2A2A2A`, rayon 8 ; boutons hauteur 32, rayon 8 : **Autoriser** (`#F2F2F2`, texte noir),
-**Refuser** (`#2A2A2A`, texte `#F2F2F2`), lien « Répondre dans Claude » (`#A3A3A3`, souligné) ;
+**Refuser** (`#2A2A2A`, texte `#F2F2F2`), lien « Répondre dans Claude » (`#BDBDBD`, souligné) ;
 « Toujours : … » en bouton contour `#333333`, hauteur 28, sur sa propre ligne.
 
-**Réglages** : lignes de 12,5 px avec une précision en 11 px `#A3A3A3` ; interrupteurs 30 × 17,
+**Réglages** : lignes de 12,5 px avec une précision en 11 px `#BDBDBD` ; interrupteurs 30 × 17,
 `#3FD07F` activé, `#333333` sinon ; survol `#FFFFFF` à 7 %.
 
 Ombre portée sous les formes entrouverte et dépliée : 0 12 28, noir à 40 %.
@@ -110,7 +116,7 @@ Ombre portée sous les formes entrouverte et dépliée : 0 12 28, noir à 40 %.
 
 États : voir plus haut. Interface : fond `#000000`, carte `#161616`, bouton secondaire `#2A2A2A`,
 contour « Toujours » `#333333`, séparateur `#1C1C1C`, texte `#F2F2F2` (18,8:1 sur noir), noms et
-commandes `#E6E6E6`, secondaire `#A3A3A3` (7,2:1 sur carte).
+commandes `#E6E6E6`, secondaire `#BDBDBD` (9,6:1 sur carte).
 
 Polices : **Segoe UI Variable Text** pour l'interface, **Cascadia Mono** pour les noms de projet et
 les commandes. Tailles dans `tokens.json` → `typography.styles`.
@@ -119,5 +125,6 @@ les commandes. Tailles dans `tokens.json` → `typography.styles`.
 
 Bip est sous la même [licence MIT](../../LICENSE) que le reste du projet. Les SVG et PNG
 s'utilisent tels quels. Pour une application WPF, le contrôle de `wpf/` se pose à 16, 20 ou
-40 px et se pilote par sa propriété `State` (`Waiting`, `Running`, `Ready`, `Error`, `Idle`) ;
-`BipResources.xaml` fournit les pinceaux et une image fixe par état.
+40 px et se pilote par sa propriété `State` (`Waiting`, `Running`, `Ready`, `Error`, `Idle`,
+`DoNotDisturb`) ; `IsAnimated="False"` donne une pose fixe. `BipResources.xaml` fournit les
+pinceaux et une image fixe par état.

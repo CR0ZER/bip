@@ -19,7 +19,8 @@ using System.Windows.Threading;
 namespace ClaudeNotch
 {
     // Neutral : hors kit, Bip seul dans l'encoche vide, qui parle a l'utilisateur.
-    enum BipState { Waiting, Running, Ready, Error, Idle, Neutral }
+    // DoNotDisturb : Bip endormi, le mode "ne pas deranger" (pas un etat de session).
+    enum BipState { Waiting, Running, Ready, Error, Idle, Neutral, DoNotDisturb }
 
     class Bip : Viewbox
     {
@@ -31,8 +32,9 @@ namespace ClaudeNotch
             { BipState.Error,   Hex(0x8E96A3) },
             { BipState.Idle,    Hex(0x4A4A4E) },
             { BipState.Neutral, Hex(0xDAD6CF) },   // blanc casse
+            { BipState.DoNotDisturb, Hex(0x6C9EFF) },
         };
-        static readonly Brush Face = Frozen(Hex(0x141414)), FaceIdle = Frozen(Hex(0x161616)), BadgeFill = Frozen(Hex(0xFFC93D));
+        static readonly Brush Face = Frozen(Hex(0x141414)), FaceIdle = Frozen(Hex(0x161616)), BadgeFill = Frozen(Hex(0xFFC93D)), Zzz = Frozen(Hex(0x9DBBFF));
         static readonly Random Rng = new Random();
 
         readonly SolidColorBrush _brush = new SolidColorBrush(StateColors[BipState.Idle]);
@@ -42,7 +44,8 @@ namespace ClaudeNotch
         readonly ScaleTransform _ballScale = new ScaleTransform();
         readonly ScaleTransform _badgeScale = new ScaleTransform(0, 0, 26, 7.5);
         readonly RotateTransform _armRotate = new RotateTransform(0, 24, 16);
-        readonly Canvas _antennaStraight, _antennaBent, _faceRunning, _faceWaiting, _faceReady, _faceError, _faceIdle, _badge;
+        readonly Canvas _antennaStraight, _antennaBent, _faceRunning, _faceWaiting, _faceReady, _faceError, _faceIdle, _badge, _antennaMoon, _faceDnd, _z1, _z2;
+        readonly TranslateTransform _z1Shift = new TranslateTransform(), _z2Shift = new TranslateTransform();
         readonly Path _arm;
         readonly DispatcherTimer _waitTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
 
@@ -55,6 +58,10 @@ namespace ClaudeNotch
 
         // Images par seconde des animations en boucle. L'encoche repliee (Bip de 16 px) passe a 8.
         public int Fps = 15;
+
+        // Pose fixe : couleur et visage de l'etat, sans aucun mouvement (sessions listees sous le
+        // bandeau "ne pas deranger").
+        public bool Still;
 
         public BipState State
         {
@@ -101,6 +108,12 @@ namespace ClaudeNotch
             _antennaBent.Children.Add(Ell(18.6, 6, 4, 4, _brush));
             root.Children.Add(_antennaBent);
 
+            // Antenne en croissant de lune (ne pas deranger)
+            _antennaMoon = new Canvas { Opacity = 0 };
+            _antennaMoon.Children.Add(Line("M16,11 V6.9", 1.8, _brush));
+            _antennaMoon.Children.Add(new Path { Data = Geometry.Parse("M17.2,2.92 A2.4,2.4 0 1 0 17.2,7.08 A2.1,2.1 0 0 1 17.2,2.92 Z"), Fill = _brush });
+            root.Children.Add(_antennaMoon);
+
             // Bras leve (attente)
             _arm = Line("M24,16 L28.5,10.5", 3, _brush);
             _arm.Opacity = 0;
@@ -114,7 +127,16 @@ namespace ClaudeNotch
                                Line("M14.5,21.2 Q16,22.8 17.5,21.2", 1.6, Face));
             _faceError = Group(Rect(11.5, 17, 3, 3, 1.5, Face), Rect(17.5, 17, 3, 3, 1.5, Face));
             _faceIdle = Group(Line("M11,18 Q13,20 15,18", 1.8, FaceIdle), Line("M17,18 Q19,20 21,18", 1.8, FaceIdle));
-            foreach (var f in new[] { _faceRunning, _faceWaiting, _faceReady, _faceError, _faceIdle }) root.Children.Add(f);
+            _faceDnd = Group(Line("M11,18 Q13,20 15,18", 1.8, Face), Line("M17,18 Q19,20 21,18", 1.8, Face));
+            foreach (var f in new[] { _faceRunning, _faceWaiting, _faceReady, _faceError, _faceIdle, _faceDnd }) root.Children.Add(f);
+
+            // Deux Z qui montent (ne pas deranger)
+            _z1 = Group(Line("M20.5,5.5 H24.5 L20.5,9.5 H24.5", 1.5, Zzz));
+            _z2 = Group(Line("M25.5,1.5 H28 L25.5,4 H28", 1.2, Zzz));
+            _z1.RenderTransform = _z1Shift;
+            _z2.RenderTransform = _z2Shift;
+            root.Children.Add(_z1);
+            root.Children.Add(_z2);
 
             // Pastille "!" (erreur)
             _badge = Group(Ell(21.8, 3.3, 8.4, 8.4, BadgeFill), Rect(25.3, 4.8, 1.4, 3.6, 0.7, Face), Ell(25.15, 9.25, 1.7, 1.7, Face));
@@ -138,8 +160,10 @@ namespace ClaudeNotch
             Fade(_faceReady, to == BipState.Ready || to == BipState.Neutral ? 1 : 0, face);
             Fade(_faceError, to == BipState.Error ? 1 : 0, face);
             Fade(_faceIdle, to == BipState.Idle ? 1 : 0, face);
+            Fade(_faceDnd, to == BipState.DoNotDisturb ? 1 : 0, animate ? 400 : 0);
 
-            Fade(_antennaStraight, to == BipState.Idle ? 0 : 1, animate ? 400 : 0);
+            Fade(_antennaStraight, to == BipState.Idle || to == BipState.DoNotDisturb ? 0 : 1, animate ? 400 : 0);
+            Fade(_antennaMoon, to == BipState.DoNotDisturb ? 1 : 0, animate ? 400 : 0);
             Fade(_antennaBent, to == BipState.Idle ? 1 : 0, animate ? 400 : 0);
             var ballAnim = new DoubleAnimation(to == BipState.Waiting ? 2.8 / 2.2 : 1.0, Ms(animate ? 200 : 0))
                 { EasingFunction = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.3 } };
@@ -154,8 +178,17 @@ namespace ClaudeNotch
             _badgeScale.BeginAnimation(ScaleTransform.ScaleXProperty, badgeAnim);
             _badgeScale.BeginAnimation(ScaleTransform.ScaleYProperty, badgeAnim);
 
+            if (Still)
+            {
+                // Pose fixe : les Z restent visibles, rien ne bouge.
+                if (to == BipState.DoNotDisturb) { _z1.Opacity = 1; _z2.Opacity = 1; }
+                return;
+            }
             switch (to)
             {
+                case BipState.DoNotDisturb:
+                    Sleep();
+                    break;
                 case BipState.Waiting:
                     _waitStart = WaitingSince ?? DateTime.Now;
                     _lastTremble = DateTime.Now;
@@ -186,6 +219,31 @@ namespace ClaudeNotch
             _tilt.BeginAnimation(RotateTransform.AngleProperty, null);
             _shift.BeginAnimation(TranslateTransform.YProperty, null);
             _armRotate.BeginAnimation(RotateTransform.AngleProperty, null);
+            foreach (var z in new[] { _z1, _z2 }) { z.BeginAnimation(OpacityProperty, null); z.Opacity = 0; }
+            _z1Shift.BeginAnimation(TranslateTransform.YProperty, null);
+            _z2Shift.BeginAnimation(TranslateTransform.YProperty, null);
+        }
+
+        // ---- Ne pas deranger : sommeil lent (X 1 -> 1,01, Y 1 -> 1,03, cycle 4 s) et deux Z qui
+        // montent en 3 s chacun (opacite 0 -> 1 -> 1 -> 0, Y +1 -> -1,5 u), le second decale de 1,5 s.
+        void Sleep()
+        {
+            var ease = new SineEase { EasingMode = EasingMode.EaseInOut };
+            _scale.BeginAnimation(ScaleTransform.ScaleXProperty, Loop(new DoubleAnimation(1, 1.01, Ms(2000))
+                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease }, Fps));
+            _scale.BeginAnimation(ScaleTransform.ScaleYProperty, Loop(new DoubleAnimation(1, 1.03, Ms(2000))
+                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease }, Fps));
+            for (int n = 0; n < 2; n++)
+            {
+                var begin = TimeSpan.FromMilliseconds(n * 1500);
+                var fade = Steps(new[] { 0, 900, 2100, 3000 }, new[] { 0.0, 1, 1, 0 });
+                fade.RepeatBehavior = RepeatBehavior.Forever;
+                fade.BeginTime = begin;
+                Timeline.SetDesiredFrameRate(fade, Fps);
+                (n == 0 ? _z1 : _z2).BeginAnimation(OpacityProperty, fade);
+                (n == 0 ? _z1Shift : _z2Shift).BeginAnimation(TranslateTransform.YProperty,
+                    Loop(new DoubleAnimation(1, -1.5, Ms(3000)) { RepeatBehavior = RepeatBehavior.Forever, BeginTime = begin }, Fps));
+            }
         }
 
         // ---- En attente : respiration qui accelere, bras qui s'agite, tremblement
@@ -251,6 +309,7 @@ namespace ClaudeNotch
         // ---- Reaction au clic : un saut, un clignement des yeux ou un petit signe.
         public void Poke()
         {
+            if (_state == BipState.DoNotDisturb) return;   // il dort
             switch (Rng.Next(3))
             {
                 case 0:

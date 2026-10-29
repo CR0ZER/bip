@@ -8,7 +8,9 @@
   <Color x:Key="Bip.Ready.Color">#3FD07F</Color>
   <Color x:Key="Bip.Error.Color">#8E96A3</Color>
   <Color x:Key="Bip.Idle.Color">#4A4A4E</Color>
+  <Color x:Key="Bip.DoNotDisturb.Color">#6C9EFF</Color>
   <Color x:Key="Bip.Badge.Color">#FFC93D</Color>
+  <Color x:Key="Bip.Zzz.Color">#9DBBFF</Color>
   <Color x:Key="Bip.Face.Color">#141414</Color>
 
   <!-- Interface de l'encoche -->
@@ -22,12 +24,16 @@
   <Color x:Key="Notch.TextSecondary.Color">#A3A3A3</Color>
   <Color x:Key="Notch.ButtonPrimary.Color">#F2F2F2</Color>
   <Color x:Key="Notch.ButtonPrimaryText.Color">#000000</Color>
+  <Color x:Key="Notch.DndBanner.Color">#111A2B</Color>
+  <Color x:Key="Notch.DndButton.Color">#1F2B44</Color>
+  <Color x:Key="Notch.DndTextSecondary.Color">#A9B8D6</Color>
 
   <SolidColorBrush x:Key="Bip.Waiting.Brush" Color="{StaticResource Bip.Waiting.Color}"/>
   <SolidColorBrush x:Key="Bip.Running.Brush" Color="{StaticResource Bip.Running.Color}"/>
   <SolidColorBrush x:Key="Bip.Ready.Brush" Color="{StaticResource Bip.Ready.Color}"/>
   <SolidColorBrush x:Key="Bip.Error.Brush" Color="{StaticResource Bip.Error.Color}"/>
   <SolidColorBrush x:Key="Bip.Idle.Brush" Color="{StaticResource Bip.Idle.Color}"/>
+  <SolidColorBrush x:Key="Bip.DoNotDisturb.Brush" Color="{StaticResource Bip.DoNotDisturb.Color}"/>
   <SolidColorBrush x:Key="Notch.Background.Brush" Color="{StaticResource Notch.Background.Color}"/>
   <SolidColorBrush x:Key="Notch.Card.Brush" Color="{StaticResource Notch.Card.Color}"/>
   <SolidColorBrush x:Key="Notch.ButtonSecondary.Brush" Color="{StaticResource Notch.ButtonSecondary.Color}"/>
@@ -38,6 +44,9 @@
   <SolidColorBrush x:Key="Notch.TextSecondary.Brush" Color="{StaticResource Notch.TextSecondary.Color}"/>
   <SolidColorBrush x:Key="Notch.ButtonPrimary.Brush" Color="{StaticResource Notch.ButtonPrimary.Color}"/>
   <SolidColorBrush x:Key="Notch.ButtonPrimaryText.Brush" Color="{StaticResource Notch.ButtonPrimaryText.Color}"/>
+  <SolidColorBrush x:Key="Notch.DndBanner.Brush" Color="{StaticResource Notch.DndBanner.Color}"/>
+  <SolidColorBrush x:Key="Notch.DndButton.Brush" Color="{StaticResource Notch.DndButton.Color}"/>
+  <SolidColorBrush x:Key="Notch.DndTextSecondary.Brush" Color="{StaticResource Notch.DndTextSecondary.Color}"/>
 
   <!-- Typographie -->
   <FontFamily x:Key="Notch.Font.Ui">Segoe UI Variable Text, Segoe UI</FontFamily>
@@ -117,6 +126,22 @@
         <GeometryDrawing Brush="#4A4A4E"><GeometryDrawing.Geometry><EllipseGeometry Center="20.6,8" RadiusX="2" RadiusY="2"/></GeometryDrawing.Geometry></GeometryDrawing>
         <GeometryDrawing Geometry="M11 18 Q13 20 15 18"><GeometryDrawing.Pen><Pen Brush="#161616" Thickness="1.8" StartLineCap="Round" EndLineCap="Round"/></GeometryDrawing.Pen></GeometryDrawing>
         <GeometryDrawing Geometry="M17 18 Q19 20 21 18"><GeometryDrawing.Pen><Pen Brush="#161616" Thickness="1.8" StartLineCap="Round" EndLineCap="Round"/></GeometryDrawing.Pen></GeometryDrawing>
+      </DrawingGroup>
+    </DrawingImage.Drawing>
+  </DrawingImage>
+  <DrawingImage x:Key="Bip.DoNotDisturb.Image">
+    <DrawingImage.Drawing>
+      <DrawingGroup>
+        <GeometryDrawing Brush="Transparent" Geometry="M0,0 H32 V32 H0 Z"/>
+        <GeometryDrawing Brush="#6C9EFF"><GeometryDrawing.Geometry><RectangleGeometry Rect="7,11,18,14" RadiusX="4" RadiusY="4"/></GeometryDrawing.Geometry></GeometryDrawing>
+        <GeometryDrawing Brush="#6C9EFF"><GeometryDrawing.Geometry><RectangleGeometry Rect="10,24,4,4" RadiusX="1.2" RadiusY="1.2"/></GeometryDrawing.Geometry></GeometryDrawing>
+        <GeometryDrawing Brush="#6C9EFF"><GeometryDrawing.Geometry><RectangleGeometry Rect="18,24,4,4" RadiusX="1.2" RadiusY="1.2"/></GeometryDrawing.Geometry></GeometryDrawing>
+        <GeometryDrawing Geometry="M16 11 V6.9"><GeometryDrawing.Pen><Pen Brush="#6C9EFF" Thickness="1.8" StartLineCap="Flat" EndLineCap="Flat"/></GeometryDrawing.Pen></GeometryDrawing>
+        <GeometryDrawing Brush="#6C9EFF" Geometry="M17.2 2.92 A2.4 2.4 0 1 0 17.2 7.08 A2.1 2.1 0 0 1 17.2 2.92 Z"/>
+        <GeometryDrawing Geometry="M11 18 Q13 20 15 18"><GeometryDrawing.Pen><Pen Brush="#141414" Thickness="1.8" StartLineCap="Round" EndLineCap="Round"/></GeometryDrawing.Pen></GeometryDrawing>
+        <GeometryDrawing Geometry="M17 18 Q19 20 21 18"><GeometryDrawing.Pen><Pen Brush="#141414" Thickness="1.8" StartLineCap="Round" EndLineCap="Round"/></GeometryDrawing.Pen></GeometryDrawing>
+        <GeometryDrawing Geometry="M20.5 5.5 H24.5 L20.5 9.5 H24.5"><GeometryDrawing.Pen><Pen Brush="#9DBBFF" Thickness="1.5" StartLineCap="Round" EndLineCap="Round" LineJoin="Round"/></GeometryDrawing.Pen></GeometryDrawing>
+        <GeometryDrawing Geometry="M25.5 1.5 H28 L25.5 4 H28"><GeometryDrawing.Pen><Pen Brush="#9DBBFF" Thickness="1.2" StartLineCap="Round" EndLineCap="Round" LineJoin="Round"/></GeometryDrawing.Pen></GeometryDrawing>
       </DrawingGroup>
     </DrawingImage.Drawing>
   </DrawingImage>

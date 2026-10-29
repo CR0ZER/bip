@@ -162,7 +162,7 @@ Décisions de Florian (remplacent celles de « Position » et « Affichage » pl
 - **Toujours en haut au centre** de l'écran principal ; les positions sur la barre
   des tâches sont supprimées.
 - **Mascotte Bip** (kit `design/bip-mascotte`, conçu par Claude Design depuis le
-  brief « ClaudeNotch — brief design ») : 5 états, dont « au repos » pour une
+  brief « ClaudeNotch — brief design ») : 5 états, dont « inactif » pour une
   session ouverte qui n'a encore rien fait (hook `SessionStart` → `idle`).
 - **Entrouverte** : à chaque nouvelle demande, l'encoche s'agrandit 4 s pour dire
   quelle session attend, puis se replie.

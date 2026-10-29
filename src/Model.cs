@@ -39,7 +39,7 @@ namespace ClaudeNotch
                 case St.Busy:    return "en cours";
                 case St.Waiting: return "en attente";
                 case St.Error:   return "erreur";
-                case St.Idle:    return "au repos";
+                case St.Idle:    return "inactif";
                 default:         return "inactif";
             }
         }

@@ -44,6 +44,12 @@
                 <Ellipse x:Name="AntennaBallBent" Canvas.Left="18.6" Canvas.Top="6" Width="4" Height="4"/>
             </Canvas>
 
+            <!-- Antenne lune (ne pas déranger) -->
+            <Canvas x:Name="AntennaDnd" Opacity="0">
+                <Path x:Name="AntennaDndStem" Data="M16,11 V6.9" StrokeThickness="1.8"/>
+                <Path x:Name="Moon" Data="M17.2,2.92 A2.4,2.4 0 1 0 17.2,7.08 A2.1,2.1 0 0 1 17.2,2.92 Z"/>
+            </Canvas>
+
             <!-- Bras levé (attente) -->
             <Path x:Name="Arm" Data="M24,16 L28.5,10.5" StrokeThickness="3"
                   StrokeStartLineCap="Round" StrokeEndLineCap="Round" Opacity="0">
@@ -74,6 +80,27 @@
             <Canvas x:Name="FaceIdle" Opacity="0">
                 <Path Data="M11,18 Q13,20 15,18" Stroke="{StaticResource FaceIdle}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
                 <Path Data="M17,18 Q19,20 21,18" Stroke="{StaticResource FaceIdle}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+            </Canvas>
+
+            <Canvas x:Name="FaceDnd" Opacity="0">
+                <Path Data="M11,18 Q13,20 15,18" Stroke="{StaticResource Face}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                <Path Data="M17,18 Q19,20 21,18" Stroke="{StaticResource Face}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+            </Canvas>
+
+            <!-- Z du sommeil (ne pas déranger) : montent et s'effacent, le 2e décalé de 1,5 s -->
+            <Canvas x:Name="Zzz" Opacity="0">
+                <Path x:Name="Z1" Data="M20.5,5.5 H24.5 L20.5,9.5 H24.5" Stroke="#9DBBFF" StrokeThickness="1.5"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round">
+                    <Path.RenderTransform>
+                        <TranslateTransform x:Name="Z1Shift"/>
+                    </Path.RenderTransform>
+                </Path>
+                <Path x:Name="Z2" Data="M25.5,1.5 H28 L25.5,4 H28" Stroke="#9DBBFF" StrokeThickness="1.2"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round">
+                    <Path.RenderTransform>
+                        <TranslateTransform x:Name="Z2Shift"/>
+                    </Path.RenderTransform>
+                </Path>
             </Canvas>
 
             <!-- Pastille « ! » (erreur) -->

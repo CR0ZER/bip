@@ -91,7 +91,7 @@ détail des mesures est dans [`docs/CONCEPTION.md`](docs/CONCEPTION.md).
 
 ## Bip
 
-<img src="design/bip-mascotte/apercu-planche.png" alt="Les cinq états de Bip à 128, 40, 20 et 16 px">
+<img src="design/bip-mascotte/apercu-planche.png" alt="Les cinq états de Bip et le Bip endormi à 128, 40, 20 et 16 px">
 
 | État | Quand | Ce qu'il fait |
 |---|---|---|
@@ -99,7 +99,10 @@ détail des mesures est dans [`docs/CONCEPTION.md`](docs/CONCEPTION.md).
 | **En cours** (orange) | Claude réfléchit, lit, exécute | Flotte doucement |
 | **Prêt** (vert) | Claude a fini et rend la main | Fait un petit saut, puis s'efface au bout de 4 min |
 | **Erreur** (gris, « ! ») | Le tour s'est arrêté sur une erreur de l'API | S'affaisse |
-| **Au repos** (gris foncé) | Session ouverte, rien demandé encore | Dort, antenne pliée |
+| **Inactif** (gris foncé) | Session ouverte, rien demandé encore | Yeux fermés, antenne pliée, immobile |
+
+Et le **Bip endormi** (bleu, antenne en croissant de lune, deux « z ») : ce n'est pas l'état d'une
+session, c'est le « ne pas déranger ».
 
 Chaque état se lit aussi sans la couleur (bras, pastille, antenne), même à 16 px.
 Le kit complet (SVG, PNG, valeurs de référence, aperçu animé) est dans [`design/bip-mascotte`](design/bip-mascotte).
@@ -121,11 +124,13 @@ Le kit complet (SVG, PNG, valeurs de référence, aperçu animé) est dans [`des
 - **Répondre dans Claude** à tout moment : la demande repart dans la fenêtre habituelle.
 - **Encoche vide** : Bip salue (et réagit si tu cliques dessus), dernières sessions terminées,
   bilan du jour (sessions, temps de travail, réponses). Un clic ailleurs ouvre Claude.
-- **Ne pas déranger** pendant 1 h : ni entrouverture, ni éclat, ni clignotement. Rappelé en haut
-  à gauche de l'encoche dépliée (« ☾ jusqu'à 17:18 », « ☾ appel en cours (Teams) ») ; un clic
-  le lève.
+- **Ne pas déranger** pendant 1 h : ni entrouverture, ni éclat, ni clignotement. L'encoche
+  repliée ne montre plus que le Bip endormi ; dépliée, un bandeau en tête dit pourquoi
+  (« jusqu'à 17:18 · alertes en pause », « appel en cours (Teams) ») avec un bouton
+  **Reprendre**, et les sessions restent visibles, immobiles. Sans session, c'est le grand Bip
+  de l'encoche vide qui s'endort.
 - **Sourdine automatique pendant les appels** (Teams, Zoom, Meet, Slack, Discord, Webex…) :
-  Bip le signale d'un bref « ☾ Ne pas déranger · appel en cours », puis te dit à la fin de
+  Bip le signale d'un bref « Ne pas déranger · appel en cours », puis te dit à la fin de
   l'appel ce qui s'est passé (« 2 sessions ont fini · data-pipeline t'attend depuis 12 min »).
   Détectée par l'utilisation du micro, aucune intégration à installer ; désactivable.
 - **Escalade douce** : après 5 min d'attente, la fenêtre Claude clignote dans la barre des
@@ -377,7 +382,7 @@ in [`docs/CONCEPTION.md`](docs/CONCEPTION.md) (in French).
 
 ### Meet Bip
 
-<img src="design/bip-mascotte/apercu-planche.png" alt="Bip's five states at 128, 40, 20 and 16 px">
+<img src="design/bip-mascotte/apercu-planche.png" alt="Bip's five states and sleeping Bip at 128, 40, 20 and 16 px">
 
 | State | When | What it does |
 |---|---|---|
@@ -385,7 +390,10 @@ in [`docs/CONCEPTION.md`](docs/CONCEPTION.md) (in French).
 | **Running** (orange) | Claude is thinking, reading, executing | Floats gently |
 | **Ready** (green) | Claude is done and hands back control | Does a little hop, then fades out after 4 min |
 | **Error** (grey, "!") | The turn stopped on an API error | Slumps |
-| **Idle** (dark grey) | Session open, nothing asked yet | Sleeps, antenna folded |
+| **Idle** (dark grey) | Session open, nothing asked yet | Eyes closed, antenna folded, still |
+
+And **sleeping Bip** (blue, crescent-moon antenna, two "z"): not a session state, it is
+do-not-disturb.
 
 Every state also reads without colour (arm, badge, antenna), even at 16 px.
 The full kit (SVG, PNG, reference values, animated preview) is in [`design/bip-mascotte`](design/bip-mascotte).
@@ -407,8 +415,10 @@ The full kit (SVG, PNG, reference values, animated preview) is in [`design/bip-m
 - **Answer in Claude** at any time: the request goes back to the usual Claude window.
 - **Empty notch**: Bip says hello (and reacts when you click it), recent finished sessions,
   today's summary (sessions, working time, answers). Clicking anywhere else opens Claude.
-- **Do not disturb** for 1 h: no peeking, no glow, no flashing. Shown at the top left of the
-  open notch ("☾ jusqu'à 17:18", "☾ appel en cours (Teams)"); one click lifts it.
+- **Do not disturb** for 1 h: no peeking, no glow, no flashing. The collapsed notch only shows
+  sleeping Bip; open, a banner at the top says why ("until 17:18 · alerts paused", "call in
+  progress (Teams)") with a **Resume** button, and sessions stay listed, still. With no
+  session, the big Bip of the empty notch falls asleep.
 - **Automatic mute during calls** (Teams, Zoom, Meet, Slack, Discord, Webex…): Bip says so
   briefly, then tells you at the end of the call what happened while you were busy. Detected
   from microphone use, nothing to integrate; can be turned off.

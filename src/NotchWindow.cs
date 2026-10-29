@@ -70,7 +70,8 @@ namespace ClaudeNotch
             return b;
         }
         static readonly Brush Black = B(0x000000), Card = B(0x161616), Btn2 = B(0x2A2A2A), Always = B(0x333333), Sep = B(0x1C1C1C);
-        static readonly Brush Ink = B(0xF2F2F2), Code = B(0xE6E6E6), Muted = B(0xA3A3A3), WaitRed = B(0xFF5D52);
+        static readonly Brush Ink = B(0xF2F2F2), Code = B(0xE6E6E6), Muted = B(0xBDBDBD), WaitRed = B(0xFF5D52);
+        static readonly Brush DndBg = B(0x111A2B), DndBtn = B(0x1F2B44), DndSub = B(0xA9B8D6);   // bandeau "ne pas deranger"
         static readonly Brush DiffDel = B(0xFF8A8A), DiffAdd = B(0x8AE39A), Hover = B(0xFFFFFF, 0x12), OnGreen = B(0x3FD07F);
         static readonly FontFamily Ui = new FontFamily("Segoe UI Variable Text, Segoe UI");
         static readonly FontFamily Mono = new FontFamily("Cascadia Mono, Consolas");
@@ -89,8 +90,8 @@ namespace ClaudeNotch
         readonly StackPanel _row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         readonly StackPanel _bips = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         readonly TextBlock _more = new TextBlock { FontSize = 11, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
-        // Sourdine active : un petit croissant a droite des Bip.
-        readonly TextBlock _moon = new TextBlock { Text = "☾", FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0), Visibility = Visibility.Collapsed };
+        // Sourdine active : le Bip endormi, seul dans l'encoche repliee.
+        readonly Bip _sleeper = new Bip { Width = COL_BIP, Height = COL_BIP, Fps = 8, State = BipState.DoNotDisturb, VerticalAlignment = VerticalAlignment.Center };
         readonly Grid _peek = new Grid { Width = PEEK_W, Height = PEEK_H, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top, Opacity = 0 };
         readonly ScrollViewer _scroll = new ScrollViewer { Width = EXP_W - 2 * EXP_PAD, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top,
                                                            Margin = new Thickness(0, TOP_PAD, 0, EXP_PAD), VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
@@ -120,7 +121,7 @@ namespace ClaudeNotch
         // Appels : sourdine automatique tant qu'une appli d'appel utilise le micro.
         bool _inCall, _autoDnd, _autoSuppressed;
         string _callApp;                           // application de l'appel en cours (Teams, Zoom...)
-        TextBlock _dndTag;                         // "☾ jusqu'a 10:30", en haut a gauche encoche depliee
+        TextBlock _dndTag;                         // "jusqu'a 10:30" et le Bip endormi, en haut a gauche de l'encoche vide
         Border _dndTagBox;
         readonly Dictionary<string, DateTime> _turnStart = new Dictionary<string, DateTime>();
         // Commandes retirees a la main (croix) alors qu'elles tournent encore.
@@ -160,8 +161,6 @@ namespace ClaudeNotch
             // Repliee : les Bip, puis "+N"
             _row.Children.Add(_bips);
             _row.Children.Add(_more);
-            _moon.Foreground = Muted;
-            _row.Children.Add(_moon);
             _row.Opacity = 0;
             _inner.Children.Add(_row);
 
@@ -459,12 +458,14 @@ namespace ClaudeNotch
         // animations continuent, et un changement d'etat se joue (saut, affaissement...).
         void SyncRow()
         {
-            var shown = _views.Take(MAX_BIPS).ToList();
-            int extra = _views.Count - shown.Count;
-            bool extraWaiting = _views.Skip(MAX_BIPS).Any(v => v.State == St.Waiting);
-            string sig = string.Join(";", shown.Select(v => v.S.Id + ":" + v.State)) + "|" + extra + extraWaiting;
+            // "Ne pas deranger" : le Bip endormi seul, les Bip des sessions retires (rien ne s'anime cache).
+            var shown = Quiet ? new List<View>() : _views.Take(MAX_BIPS).ToList();
+            int extra = Quiet ? 0 : _views.Count - shown.Count;
+            bool extraWaiting = !Quiet && _views.Skip(MAX_BIPS).Any(v => v.State == St.Waiting);
+            string sig = string.Join(";", shown.Select(v => v.S.Id + ":" + v.State)) + "|" + extra + extraWaiting + Quiet;
             if (sig == _rowSig) return;
             _rowSig = sig;
+            if (Quiet) { _bips.Children.Clear(); _rowBips.Clear(); _leaving.Clear(); }
 
             var ids = shown.Select(v => v.S.Id).ToList();
 
@@ -528,15 +529,15 @@ namespace ClaudeNotch
 
         double CollapsedWidth()
         {
+            if (Quiet) return 2 * COL_PAD + COL_BIP;   // le Bip endormi seul
             int n = _rowBips.Count - _leaving.Count;
             if (n <= 0) n = 1;
             double w = 2 * COL_PAD + n * COL_BIP + (n - 1) * COL_GAP;
-            foreach (var extra in new[] { _more, _moon })
-                if (extra.Visibility == Visibility.Visible)
-                {
-                    extra.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-                    w += extra.Margin.Left + extra.DesiredSize.Width;
-                }
+            if (_more.Visibility == Visibility.Visible)
+            {
+                _more.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                w += _more.Margin.Left + _more.DesiredSize.Width;
+            }
             return w;
         }
 
@@ -742,7 +743,7 @@ namespace ClaudeNotch
         {
             var longest = _views.Where(v => v.State == St.Waiting).Select(v => DateTime.Now - v.Since).DefaultIfEmpty(TimeSpan.Zero).Max();
             UpdateGlow();   // fin du "ne pas deranger" : l'eclat reprend s'il le faut
-            UpdateMoon();
+            UpdateSleeper();
             if (_cfg.Flash && !Quiet && longest >= FLASH_AFTER && DateTime.Now - _lastFlash > FLASH_EVERY)
             {
                 _lastFlash = DateTime.Now;
@@ -919,7 +920,7 @@ namespace ClaudeNotch
                     _autoDnd = true;
                     _autoSuppressed = false;
                     QuietChanged();
-                    if (!wasQuiet) MicroPeek("☾  Ne pas déranger · appel en cours (" + app + ")");
+                    if (!wasQuiet) MicroPeek("Ne pas déranger · appel en cours (" + app + ")");
                 }
                 return;
             }
@@ -954,11 +955,12 @@ namespace ClaudeNotch
             return parts.Count == 0 ? null : "Pendant ton appel : " + string.Join(" · ", parts);
         }
 
-        // Micro-ouverture de 2 s, une seule ligne (meme en sourdine : c'est elle qu'on annonce).
+        // Micro-ouverture de 2 s, une seule ligne avec le Bip endormi (meme en sourdine : c'est elle qu'on annonce).
         void MicroPeek(string text)
         {
-            var t = new TextBlock { Text = text, FontSize = 12.5, FontWeight = FontWeights.SemiBold, Foreground = Ink,
+            var t = new TextBlock { FontSize = 12.5, FontWeight = FontWeights.SemiBold, Foreground = Ink,
                                     HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            SetIconText(t, text, 18);
             t.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             ShowPeek(t, Math.Max(240, t.DesiredSize.Width + 40), 34, TimeSpan.FromSeconds(2), null);
         }
@@ -975,34 +977,70 @@ namespace ClaudeNotch
             ShowPeek(row, W, 76, TimeSpan.FromSeconds(6), null);
         }
 
-        // La sourdine a change : eclat, croissant et bouton suivent.
+        // La sourdine a change : eclat, Bip endormi, bandeau et bouton suivent.
         void QuietChanged()
         {
             UpdateGlow();
-            UpdateMoon();
+            UpdateSleeper();
+            if (_form == Form.Expanded) Redraw();
             if (_dndText != null)
             {
-                _dndText.Text = DndLabel();
+                SetIconText(_dndText, DndLabel(), 16);
                 var b = _dndText.Parent as Border;
                 if (b != null) b.Background = Quiet ? Btn2 : Brushes.Transparent;
             }
         }
 
-        // "☾ jusqu'a 10:30" ou "☾ appel en cours (Teams)", encoche depliee seulement.
+        // "jusqu'a 10:30" ou "appel en cours (Teams)" avec le Bip endormi, en haut a gauche de
+        // l'encoche vide. Avec des sessions, c'est le bandeau en tete qui le dit.
         void UpdateDndTag()
         {
             if (_dndTagBox == null) return;
-            _dndTag.Text = _cfg.Dnd ? "☾ jusqu'à " + _cfg.DndUntil.ToString("HH:mm")
-                                    : "☾ appel en cours" + (_callApp != null ? " (" + _callApp + ")" : "");
-            _dndTagBox.Visibility = _form == Form.Expanded && Quiet ? Visibility.Visible : Visibility.Collapsed;
+            SetIconText(_dndTag, DndWhy(), 14);
+            _dndTagBox.Visibility = _form == Form.Expanded && Quiet && _views.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        void UpdateMoon()
+        string DndWhy()
+        {
+            return _cfg.Dnd ? "jusqu'à " + _cfg.DndUntil.ToString("HH:mm") : "appel en cours" + (_callApp != null ? " (" + _callApp + ")" : "");
+        }
+
+        // Bip endormi en ligne avec un texte (etiquette, bouton, entrouverture).
+        static void SetIconText(TextBlock tb, string text, double size)
+        {
+            tb.Inlines.Clear();
+            tb.Inlines.Add(new InlineUIContainer(new Bip { Width = size, Height = size, State = BipState.DoNotDisturb }) { BaselineAlignment = BaselineAlignment.Center });
+            tb.Inlines.Add(new Run("  " + text));
+        }
+
+        // En tete de l'encoche depliee avec des sessions : Bip endormi 32 px, pourquoi, et Reprendre.
+        FrameworkElement DndBanner()
+        {
+            var g = new Grid();
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            g.Children.Add(new Bip { Width = 32, Height = 32, State = BipState.DoNotDisturb, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) });
+            var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            text.Children.Add(new TextBlock { Text = "Ne pas déranger", FontSize = 14, LineHeight = 20, FontWeight = FontWeights.SemiBold, Foreground = Ink });
+            text.Children.Add(new TextBlock { Text = DndWhy() + " · alertes en pause", FontSize = 12, LineHeight = 16, Foreground = DndSub, TextTrimming = TextTrimming.CharacterEllipsis });
+            Grid.SetColumn(text, 1);
+            g.Children.Add(text);
+            var resume = Btn("Reprendre", DndBtn, Ink, null, 32, ToggleDnd, () => DateTime.Now - _expandedAt > ARM_DELAY);
+            resume.Margin = new Thickness(12, 0, 0, 0);
+            resume.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(resume, 2);
+            g.Children.Add(resume);
+            return new Border { Background = DndBg, CornerRadius = new CornerRadius(14), Padding = new Thickness(14, 12, 14, 12), Margin = new Thickness(0, 0, 0, 10), Child = g };
+        }
+
+        void UpdateSleeper()
         {
             UpdateDndTag();
-            var v = Quiet ? Visibility.Visible : Visibility.Collapsed;
-            if (_moon.Visibility == v) return;
-            _moon.Visibility = v;
+            if (_row.Children.Contains(_sleeper) == Quiet) return;
+            // Retire hors "ne pas deranger" : son sommeil ne tourne pas pour rien.
+            if (Quiet) _row.Children.Add(_sleeper); else _row.Children.Remove(_sleeper);
+            SyncRow();
             if (_form == Form.Collapsed) { _colW = CollapsedWidth(); Resize(_colW, COL_H, 250); }
         }
 
@@ -1023,7 +1061,8 @@ namespace ClaudeNotch
             string sig = string.Join(";", _views.Select(v => v.S.Id + ":" + v.State + ":" + v.S.Display + ":" + v.Pending.Count + ":"
                                                          + string.Join(",", VisibleAgents(v.S).Select(a => a.Tuid + (a.End != null ? "+" : "")))))
                        + "|" + string.Join(",", _pending.Select(p => p.GetHashCode()))
-                       + "|" + (_settingsOpen ? Quiet + ":" + _cfg.AutoDnd + ":" + _cfg.Flash + ":" + Rules.Created().Count : "");
+                       + "|" + (_settingsOpen ? Quiet + ":" + _cfg.AutoDnd + ":" + _cfg.Flash + ":" + Rules.Created().Count : "")
+                       + "|" + (Quiet ? DndWhy() : "");
             if (sig == _panelSig && !opening) return;
             // Pendant une saisie, on ne reconstruit rien : le focus serait perdu.
             if (!opening && IsActive && Keyboard.FocusedElement is TextBox) return;
@@ -1031,6 +1070,8 @@ namespace ClaudeNotch
 
             _tickers.Clear();
             _content.Children.Clear();
+            UpdateDndTag();
+            if (Quiet && _views.Count > 0) _content.Children.Add(DndBanner());
 
             // Les demandes d'abord, en grand ; puis les sessions, en attente d'abord.
             foreach (var v in _views.Where(v => v.Pending.Count > 0).OrderBy(v => v.Since))
@@ -1323,7 +1364,7 @@ namespace ClaudeNotch
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var bip = new Bip { Width = 40, Height = 40, State = BipState.Idle, VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand, ToolTip = "Bip" };
-            bip.Loaded += (s, e) => Dispatcher.BeginInvoke((Action)(() => bip.State = BipState.Neutral), DispatcherPriority.Background);
+            bip.Loaded += (s, e) => Dispatcher.BeginInvoke((Action)(() => bip.State = Quiet ? BipState.DoNotDisturb : BipState.Neutral), DispatcherPriority.Background);
             bip.MouseLeftButtonDown += (s, e) => e.Handled = true;
             bip.MouseLeftButtonUp += (s, e) => { e.Handled = true; bip.Poke(); };
             row.Children.Add(bip);
@@ -1349,6 +1390,7 @@ namespace ClaudeNotch
             dnd.Margin = new Thickness(0);
             dnd.ToolTip = "Pendant 1 h : pas d'entrouverture, pas d'éclat, pas de clignotement de Claude";
             _dndText = (TextBlock)dnd.Child;
+            SetIconText(_dndText, DndLabel(), 16);
             Grid.SetColumn(dnd, 2);
             row.Children.Add(dnd);
 
@@ -1371,9 +1413,9 @@ namespace ClaudeNotch
 
         string DndLabel()
         {
-            if (_cfg.Dnd) return "☾ Pause jusqu'à " + _cfg.DndUntil.ToString("HH:mm");
-            if (_autoDnd && !_autoSuppressed) return "☾ Appel en cours";
-            return "☾ Ne pas déranger";
+            if (_cfg.Dnd) return "Pause jusqu'à " + _cfg.DndUntil.ToString("HH:mm");
+            if (_autoDnd && !_autoSuppressed) return "Appel en cours";
+            return "Ne pas déranger";
         }
 
         void ToggleDnd()
@@ -1398,6 +1440,7 @@ namespace ClaudeNotch
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var bip = MakeBip(v, 20);
+            bip.Still = Quiet;   // sous le bandeau "ne pas deranger" : vraie couleur, immobile
             bip.Margin = new Thickness(4, 0, 10, 0);
             bip.VerticalAlignment = VerticalAlignment.Center;
             g.Children.Add(bip);
@@ -1543,7 +1586,7 @@ namespace ClaudeNotch
                 case St.Waiting: return "en attente · " + d;
                 case St.Busy:    return "en cours · " + d;
                 case St.Error:   return "erreur · " + d;
-                case St.Idle:    return "au repos";
+                case St.Idle:    return "inactif";
                 default:         return "prêt";
             }
         }

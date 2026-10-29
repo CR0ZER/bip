@@ -20,8 +20,13 @@ namespace ClaudeNotch.Controls
         Ready,
         /// <summary>Le tour s'est arrêté sur une erreur de l'API.</summary>
         Error,
-        /// <summary>Session ouverte mais au repos.</summary>
-        Idle
+        /// <summary>Session ouverte mais inactive (rien demandé encore).</summary>
+        Idle,
+        /// <summary>
+        /// Mode « ne pas déranger » de l'utilisateur (ex. en réunion). Ce n'est pas un état de session :
+        /// à utiliser pour le Bip veilleur unique de l'encoche repliée (voir README, option A).
+        /// </summary>
+        DoNotDisturb
     }
 
     /// <summary>
@@ -40,6 +45,24 @@ namespace ClaudeNotch.Controls
         /// </summary>
         public static readonly DependencyProperty WaitingSinceProperty = DependencyProperty.Register(
             nameof(WaitingSince), typeof(DateTime?), typeof(BipControl), new PropertyMetadata(null));
+
+        /// <summary>
+        /// false = pose fixe, sans boucle d'animation (respiration, flottement, tremblement, Z).
+        /// Sert aux lignes de la liste dépliée pendant le mode « ne pas déranger ».
+        /// </summary>
+        public static readonly DependencyProperty IsAnimatedProperty = DependencyProperty.Register(
+            nameof(IsAnimated), typeof(bool), typeof(BipControl),
+            new PropertyMetadata(true, (d, e) =>
+            {
+                var bip = (BipControl)d;
+                if (bip.IsLoaded) bip.ApplyState(bip.State, bip.State, animate: false);
+            }));
+
+        public bool IsAnimated
+        {
+            get => (bool)GetValue(IsAnimatedProperty);
+            set => SetValue(IsAnimatedProperty, value);
+        }
 
         public BipState State
         {
@@ -61,6 +84,7 @@ namespace ClaudeNotch.Controls
             [BipState.Ready] = Hex("#3FD07F"),
             [BipState.Error] = Hex("#8E96A3"),
             [BipState.Idle] = Hex("#4A4A4E"),
+            [BipState.DoNotDisturb] = Hex("#6C9EFF"),
         };
 
         private static readonly Random Rng = new Random();
@@ -74,9 +98,9 @@ namespace ClaudeNotch.Controls
         {
             InitializeComponent();
 
-            foreach (var shape in new Shape[] { BodyRect, FootL, FootR, AntennaBall, AntennaBallBent })
+            foreach (var shape in new Shape[] { BodyRect, FootL, FootR, AntennaBall, AntennaBallBent, Moon })
                 shape.Fill = _stateBrush;
-            foreach (var shape in new Shape[] { AntennaStem, AntennaBent, Arm })
+            foreach (var shape in new Shape[] { AntennaStem, AntennaBent, AntennaDndStem, Arm })
                 shape.Stroke = _stateBrush;
 
             _waitTimer.Tick += OnWaitTick;
@@ -106,10 +130,14 @@ namespace ClaudeNotch.Controls
             Fade(FaceReady, to == BipState.Ready ? 1 : 0, face);
             Fade(FaceError, to == BipState.Error ? 1 : 0, face);
             Fade(FaceIdle, to == BipState.Idle ? 1 : 0, face);
+            Fade(FaceDnd, to == BipState.DoNotDisturb ? 1 : 0, animate ? 400 : 0);
 
-            // Antenne : droite, gonflée en attente, pliée au repos (400 ms)
-            Fade(AntennaStraight, to == BipState.Idle ? 0 : 1, animate ? 400 : 0);
+            // Antenne : droite, gonflée en attente, pliée en inactif, lune en ne pas déranger (400 ms)
+            bool straight = to != BipState.Idle && to != BipState.DoNotDisturb;
+            Fade(AntennaStraight, straight ? 1 : 0, animate ? 400 : 0);
             Fade(AntennaBentGroup, to == BipState.Idle ? 1 : 0, animate ? 400 : 0);
+            Fade(AntennaDnd, to == BipState.DoNotDisturb ? 1 : 0, animate ? 400 : 0);
+            Fade(Zzz, to == BipState.DoNotDisturb ? 1 : 0, animate ? 400 : 0);
             double ball = to == BipState.Waiting ? 2.8 / 2.2 : 1.0;
             var ballAnim = new DoubleAnimation(ball, Ms(animate ? 200 : 0)) { EasingFunction = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.3 } };
             AntennaBallScale.BeginAnimation(ScaleTransform.ScaleXProperty, ballAnim);
@@ -125,8 +153,29 @@ namespace ClaudeNotch.Controls
             BadgeScale.BeginAnimation(ScaleTransform.ScaleXProperty, badgeAnim);
             BadgeScale.BeginAnimation(ScaleTransform.ScaleYProperty, badgeAnim);
 
+            if (!IsAnimated)
+            {
+                // Pose fixe : seule l'erreur garde son affaissement, sans mouvement.
+                if (to == BipState.Error)
+                {
+                    RootScale.ScaleX = 1.04;
+                    RootScale.ScaleY = 0.94;
+                }
+                else
+                {
+                    RootScale.ScaleX = 1;
+                    RootScale.ScaleY = 1;
+                }
+                return;
+            }
+            RootScale.ScaleX = 1;
+            RootScale.ScaleY = 1;
+
             switch (to)
             {
+                case BipState.DoNotDisturb:
+                    StartSleep();
+                    break;
                 case BipState.Waiting:
                     _waitStart = WaitingSince ?? DateTime.Now;
                     _lastTremble = DateTime.Now;
@@ -159,6 +208,45 @@ namespace ClaudeNotch.Controls
             RootTilt.BeginAnimation(RotateTransform.AngleProperty, null);
             RootShift.BeginAnimation(TranslateTransform.YProperty, null);
             ArmRotate.BeginAnimation(RotateTransform.AngleProperty, null);
+            Z1.BeginAnimation(OpacityProperty, null);
+            Z2.BeginAnimation(OpacityProperty, null);
+            Z1Shift.BeginAnimation(TranslateTransform.YProperty, null);
+            Z2Shift.BeginAnimation(TranslateTransform.YProperty, null);
+            Z1.Opacity = 1; // pose fixe : Z visibles
+            Z2.Opacity = 1;
+        }
+
+        // ---- Ne pas déranger : sommeil lent et Z qui montent ----
+
+        /// <summary>Respiration X 1→1,01, Y 1→1,03, cycle 4 s ; Z : 3 s chacun, le 2e décalé de 1,5 s.</summary>
+        private void StartSleep()
+        {
+            var ease = new SineEase { EasingMode = EasingMode.EaseInOut };
+            RootScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1, 1.01, Ms(2000))
+            { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease });
+            RootScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1, 1.03, Ms(2000))
+            { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease });
+            StartZ(Z1, Z1Shift, 0);
+            StartZ(Z2, Z2Shift, 1500);
+        }
+
+        private static void StartZ(UIElement z, TranslateTransform shift, int delayMs)
+        {
+            var begin = TimeSpan.FromMilliseconds(delayMs);
+            var fade = new DoubleAnimationUsingKeyFrames
+            { Duration = Ms(3000), RepeatBehavior = RepeatBehavior.Forever, BeginTime = begin };
+            fade.KeyFrames.Add(new LinearDoubleKeyFrame(0, Kt(0)));
+            fade.KeyFrames.Add(new LinearDoubleKeyFrame(1, Kt(900)));
+            fade.KeyFrames.Add(new LinearDoubleKeyFrame(1, Kt(2100)));
+            fade.KeyFrames.Add(new LinearDoubleKeyFrame(0, Kt(3000)));
+            z.Opacity = 0;
+            z.BeginAnimation(OpacityProperty, fade);
+            shift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(1, -1.5, Ms(3000))
+            {
+                RepeatBehavior = RepeatBehavior.Forever,
+                BeginTime = begin,
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseOut }
+            });
         }
 
         // ---- En attente : respiration qui accélère, bras qui s'agite, tremblement ----

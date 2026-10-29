@@ -432,7 +432,7 @@ namespace ClaudeNotch
                     _turnStart[s.Id] = DateTime.Now;   // debut du tour : base du recap de fin de tour
                 }
                 if (had && prev == St.Busy && s.State != St.Busy) Journal.Add("pause", s.Id, s.Display);
-                if (had && prev != St.Ready && s.State == St.Ready) Journal.Add("termine", s.Id, s.Display);
+                if (had && prev != St.Ready && s.State == St.Ready) { Journal.Add("termine", s.Id, s.Display); GitRead(s.Dir, true); }
                 _prev[s.Id] = s.State;
             }
             foreach (var id in _prev.Keys.Where(k => !seen.Contains(k)).ToList())
@@ -579,6 +579,7 @@ namespace ClaudeNotch
                 _menuBtn.Visibility = Visibility.Visible;
                 FadeTo(_menuBtn, 1, 180, 250);
                 _todoAdding = false;
+                foreach (var v in _views) if (!v.S.IsRun) GitRead(v.S.Dir, false);
                 _todoBtn.Visibility = Visibility.Visible;
                 FadeTo(_todoBtn, 1, 180, 250);
                 FadeTo(_row, 0, 100, 0);
@@ -1079,7 +1080,8 @@ namespace ClaudeNotch
                        + "|" + string.Join(",", _pending.Select(p => p.GetHashCode()))
                        + "|" + (_settingsOpen ? Quiet + ":" + _cfg.AutoDnd + ":" + _cfg.Flash + ":" + Rules.Created().Count : "")
                        + "|" + (Quiet ? DndWhy() : "")
-                       + "|" + Todo.Sig(Program.Root) + ":" + _cfg.TodoOpen + ":" + _todoAdding + ":" + string.Join(",", _todoDone.Keys);
+                       + "|" + Todo.Sig(Program.Root) + ":" + _cfg.TodoOpen + ":" + _todoAdding + ":" + string.Join(",", _todoDone.Keys)
+                       + "|" + _gitVer + ":" + string.Join(",", _gitOpen);
             if (sig == _panelSig && !opening) return;
             // Pendant une saisie, on ne reconstruit rien : le focus serait perdu.
             if (!opening && IsActive && Keyboard.FocusedElement is TextBox) return;
@@ -1558,7 +1560,9 @@ namespace ClaudeNotch
         {
             // Session prete : le recap de son dernier tour, en vert sous le nom.
             string recap = !v.S.IsRun && v.State == St.Ready ? TurnRecap(v.S) : null;
-            var g = new Grid { Height = recap == null ? 36 : 48, Background = Brushes.Transparent };
+            var git = v.S.IsRun ? null : GitOf(v.S.Dir);
+            bool sub = recap != null || git != null;
+            var g = new Grid { Height = sub ? 48 : 36, Background = Brushes.Transparent };
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -1583,12 +1587,28 @@ namespace ClaudeNotch
                 Grid.SetColumn(dock, 1);
                 g.Children.Add(dock);
             }
-            else if (recap != null)
+            else if (sub)
             {
                 var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
                 stack.Children.Add(name);
-                stack.Children.Add(new TextBlock { Text = recap, FontSize = 11.5, Foreground = OnGreen, Margin = new Thickness(0, 2, 0, 0),
-                                                   TextTrimming = TextTrimming.CharacterEllipsis });
+                var fg = recap != null ? OnGreen : Muted;
+                var line = new TextBlock { FontSize = 11.5, Foreground = fg, TextTrimming = TextTrimming.CharacterEllipsis };
+                if (recap != null) line.Inlines.Add(new Run(recap + (git != null ? " · " : "")));
+                if (git != null)
+                {
+                    line.Inlines.Add(new InlineUIContainer(BranchIcon(fg)) { BaselineAlignment = BaselineAlignment.Center });
+                    line.Inlines.Add(new Run(" " + GitLine(git, recap != null)));
+                }
+                if (git == null) { line.Margin = new Thickness(0, 2, 0, 0); stack.Children.Add(line); }
+                else
+                {
+                    // Toute la ligne Git deplie le detail.
+                    var hit = new Border { Child = line, CornerRadius = new CornerRadius(4), Background = Brushes.Transparent, Margin = new Thickness(-4, 0, 0, 0),
+                                           Padding = new Thickness(4, 1, 4, 1), ToolTip = "Détail Git" };
+                    string dir = v.S.Dir;
+                    Clickable(hit, () => ToggleGit(dir), SettingsArmed);
+                    stack.Children.Add(hit);
+                }
                 Grid.SetColumn(stack, 1);
                 g.Children.Add(stack);
             }
@@ -1629,8 +1649,92 @@ namespace ClaudeNotch
             var wrap = new StackPanel();
             if (separator) wrap.Children.Add(new Rectangle { Height = 1, Fill = Sep });
             wrap.Children.Add(border);
+            if (git != null && _gitOpen.Contains(GitKey(v.S.Dir))) AddGitLines(wrap, git);
             AddAgentLines(wrap, v.S);
             return wrap;
+        }
+
+        // ------------------------------------------------------------ Git
+
+        class GitEntry { public GitInfo Info; public DateTime At; public bool Loading; }
+        readonly Dictionary<string, GitEntry> _git = new Dictionary<string, GitEntry>();   // par dossier
+        readonly HashSet<string> _gitOpen = new HashSet<string>();                          // detail deplie
+        int _gitVer;
+
+        static string GitKey(string dir) { return (dir ?? "").TrimEnd('\\', '/').ToLowerInvariant(); }
+
+        GitInfo GitOf(string dir) { GitEntry e; return _git.TryGetValue(GitKey(dir), out e) ? e.Info : null; }
+
+        // Jamais en continu : en fin de tour (force), a l'ouverture si plus vieux que 30 s, au clic.
+        void GitRead(string dir, bool force)
+        {
+            if (string.IsNullOrEmpty(dir)) return;
+            string k = GitKey(dir);
+            GitEntry e;
+            if (!_git.TryGetValue(k, out e)) _git[k] = e = new GitEntry();
+            if (e.Loading || (!force && DateTime.Now - e.At < TimeSpan.FromSeconds(30))) return;
+            e.Loading = true;
+            bool log = _gitOpen.Contains(k);
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                var info = Git.Status(dir);
+                if (info != null && log && info.Upstream && info.Ahead > 0) info.Unpushed = Git.Unpushed(dir);
+                Dispatcher.BeginInvoke((Action)(() =>
+                {
+                    e.Info = info; e.At = DateTime.Now; e.Loading = false; _gitVer++;
+                    if (_form == Form.Expanded) RenderPanel(false);
+                }));
+            });
+        }
+
+        void ToggleGit(string dir)
+        {
+            string k = GitKey(dir);
+            if (!_gitOpen.Remove(k)) { _gitOpen.Add(k); GitRead(dir, true); }
+            Redraw();
+        }
+
+        // Icone de branche, 11 x 12, au trait.
+        static Path BranchIcon(Brush b)
+        {
+            return new Path { Width = 11, Height = 12, Stroke = b, StrokeThickness = 1.2, Margin = new Thickness(0, 0, 0, 1),
+                              Data = Geometry.Parse("M3,3.6 V8.4 M8.5,5.1 C8.5,7.4 3,6.6 3,8.4 M3,0.6 A1.5,1.5 0 1 1 3,3.6 A1.5,1.5 0 1 1 3,0.6 "
+                                                  + "M3,8.4 A1.5,1.5 0 1 1 3,11.4 A1.5,1.5 0 1 1 3,8.4 M8.5,2.1 A1.5,1.5 0 1 1 8.5,5.1 A1.5,1.5 0 1 1 8.5,2.1") };
+        }
+
+        // "main · 3 non commités · 2 à pousser" ; apres le recap : "main, 3 non commités" (icone devant).
+        static string GitLine(GitInfo g, bool afterRecap)
+        {
+            if (g == null) return null;
+            var parts = new List<string>();
+            int n = g.Files.Count;
+            if (n > 0) parts.Add(n + (n > 1 ? " non commités" : " non commité"));
+            if (g.Ahead > 0) parts.Add(g.Ahead + " à pousser");
+            if (!g.Upstream && g.Branch != "(détachée)") parts.Add("non publiée");
+            string head = Safe(g.Branch);
+            return parts.Count == 0 ? head : head + (afterRecap ? ", " : " · ") + string.Join(" · ", parts);
+        }
+
+        // Detail, en retrait : fichiers (8 au plus), puis commits a pousser (5 au plus). Lecture seule.
+        void AddGitLines(Panel wrap, GitInfo g)
+        {
+            foreach (var f in g.Files.Take(8))
+            {
+                var t = new TextBlock { FontFamily = Mono, FontSize = 11.5, Margin = new Thickness(34, 1, 4, 1), TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = f.Substring(2) };
+                t.Inlines.Add(new Run(f.Substring(0, 1) + "  ") { Foreground = Muted });
+                t.Inlines.Add(new Run(Safe(f.Substring(2))) { Foreground = Code });
+                wrap.Children.Add(t);
+            }
+            if (g.Files.Count > 8) wrap.Children.Add(new TextBlock { Text = "+" + (g.Files.Count - 8), FontSize = 11.5, Foreground = Muted, Margin = new Thickness(34, 1, 0, 1) });
+            if (g.Unpushed != null)
+            {
+                foreach (var c in g.Unpushed)
+                    wrap.Children.Add(new TextBlock { Text = "↑  " + Safe(c), FontSize = 11.5, Foreground = Code, Margin = new Thickness(34, 1, 4, 1), TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = c });
+                if (g.Ahead > g.Unpushed.Count) wrap.Children.Add(new TextBlock { Text = "+" + (g.Ahead - g.Unpushed.Count), FontSize = 11.5, Foreground = Muted, Margin = new Thickness(34, 1, 0, 1) });
+            }
+            if (g.Files.Count == 0 && g.Ahead == 0)
+                wrap.Children.Add(new TextBlock { Text = "rien à commiter", FontSize = 11.5, Foreground = Muted, Margin = new Thickness(34, 1, 0, 1) });
+            wrap.Children.Add(new Rectangle { Height = 4 });
         }
 
         // ------------------------------------------------------------ sous-agents

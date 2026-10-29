@@ -166,6 +166,23 @@ priorités, ni projets.
   d'autorisation, et Bip ne propose jamais de règle pour elle.
 - Les tâches sont dans `todo.txt`, dans le dossier de Bip, une par ligne, modifiable à la main.
 
+### Git dans l'encoche
+
+Sous le nom de chaque session, une ligne discrète donne la branche et ce qui reste à faire :
+`main · 3 non commités · 2 à pousser` (« non publiée » si la branche n'a pas de branche
+distante). Quand une session a fini son tour, la ligne verte du récap l'ajoute : c'est le bon
+moment pour commiter.
+
+- **Un clic sur la ligne Git** la déplie : fichiers modifiés (8 au plus, avec leur état
+  `M` / `A` / `D` / `?`) et commits pas encore poussés (5 au plus). Lecture seule : Bip ne commite
+  ni ne pousse jamais rien.
+- **Jamais en continu** : Bip lit Git à la fin d'un tour, et à l'ouverture de l'encoche si la
+  dernière lecture a plus de 30 s. Une lecture coûte un `git status` (≈ 60 ms), en arrière-plan.
+- **Sans gêner Claude ni rien lancer** : sans verrou sur le dépôt (Claude peut commiter en même
+  temps), et sans les commandes qu'un dépôt peut configurer (fsmonitor, hooks, signatures,
+  sous-modules).
+- Hors dépôt Git, ou Git absent du poste : pas de ligne.
+
 ### Journal d'audit
 
 Bip garde la trace de **tout ce que les agents font sur le poste** : chaque commande, fichier
@@ -287,6 +304,7 @@ src/
   Agents.cs       sous-agents et titre des sessions
   BipCli.cs       bip.exe : bip run <commande>, bip todo "texte"
   Todo.cs         micro to-do list (todo.txt)
+  Git.cs          lecture de Git (branche, fichiers, commits à pousser)
   Audit.cs        journal d'audit : écriture chaînée, masquage, lecture
   Rules.cs        règles suggérées
   Report.cs       rapport d'audit HTML
@@ -470,6 +488,22 @@ projects.
   to: the command always goes through a permission request, and Bip never suggests a rule for it.
 - Tasks live in `todo.txt`, in Bip's folder, one per line, editable by hand.
 
+#### Git in the notch
+
+Under each session's name, a discreet line shows the branch and what is left to do:
+`main · 3 non commités · 2 à pousser` (3 uncommitted, 2 to push; "non publiée" when the branch
+has no upstream). When a session finishes its turn, the green recap line adds it: the right
+moment to commit.
+
+- **Clicking the Git line** opens the detail: changed files (up to 8, with their `M` / `A` / `D` /
+  `?` state) and commits not pushed yet (up to 5). Read-only: Bip never commits or pushes.
+- **Never continuously**: Bip reads Git at the end of a turn, and when the notch opens if the last
+  read is older than 30 s. A read costs one `git status` (≈ 60 ms), in the background.
+- **Without getting in Claude's way or running anything**: no lock on the repository (Claude can
+  commit at the same time), and none of the commands a repository can configure (fsmonitor,
+  hooks, signatures, submodules).
+- Outside a Git repository, or without Git on the machine: no line.
+
 #### Audit log
 
 Bip records **everything agents do on the machine**: every command, edited file or fetched page,
@@ -587,6 +621,7 @@ src/
   Agents.cs       sub-agents and session titles
   BipCli.cs       bip.exe: bip run <command>, bip todo "text"
   Todo.cs         micro to-do list (todo.txt)
+  Git.cs          Git reading (branch, files, commits to push)
   Audit.cs        audit log: chained writes, masking, reading
   Rules.cs        suggested rules
   Report.cs       HTML audit report

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using ClaudeNotch;
 
@@ -14,6 +15,18 @@ static class AuditTests
     {
         Console.WriteLine((ok ? "  ok    " : "  ÉCHEC ") + label);
         if (!ok) _fail++;
+    }
+
+    // git dans un dossier de test ; faux si Git est absent ou echoue.
+    static bool Sh(string dir, string args)
+    {
+        try
+        {
+            var p = Process.Start(new ProcessStartInfo("git", args) { WorkingDirectory = dir, UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true });
+            p.StandardError.ReadToEndAsync(); p.StandardOutput.ReadToEnd(); p.WaitForExit();
+            return p.ExitCode == 0;
+        }
+        catch { return false; }
     }
 
     // Dossier temporaire et empreinte de fin de chaine qu'il a laissee dans le registre.
@@ -169,6 +182,41 @@ static class AuditTests
             Check("signature change avec le fichier", Todo.Sig(root) != sig);
         }
         finally { Clean(root); }
+
+        Console.WriteLine("Git");
+        var gi = Git.Parse("# branch.oid abc\n# branch.head feature/x\n# branch.upstream origin/feature/x\n# branch.ab +2 -1\n"
+                         + "1 .M N... 100644 100644 100644 h1 h2 src/mon fichier.cs\n1 A. N... 000000 100644 100644 h1 h2 neuf.cs\n"
+                         + "2 R. N... 100644 100644 100644 h1 h2 R100 nouveau.cs\tancien.cs\n1 .D N... 100644 100644 000000 h1 h2 parti.cs\n"
+                         + "u UU N... 100644 100644 100644 100644 h1 h2 h3 conflit.cs\n? notes été.txt\n");
+        Check("branche, distante, avance", gi.Branch == "feature/x" && gi.Upstream && gi.Ahead == 2);
+        Check("fichiers et leur etat", string.Join("|", gi.Files) == "M src/mon fichier.cs|A neuf.cs|R nouveau.cs|D parti.cs|U conflit.cs|? notes été.txt");
+        gi = Git.Parse("# branch.oid (initial)\n# branch.head main\n");
+        Check("depot neuf : non publie, rien a commiter", gi.Branch == "main" && !gi.Upstream && gi.Ahead == 0 && gi.Files.Count == 0);
+        Check("hors branche", Git.Parse("# branch.oid abc\n# branch.head (detached)\n").Branch == "(détachée)");
+        Check("sortie vide : rien", Git.Parse("") == null);
+        root = Path.Combine(Path.GetTempPath(), "bip-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            Check("hors depot : rien", Git.Status(root) == null);
+            if (Sh(root, "init -q -b main") && Sh(root, "-c user.name=t -c user.email=t@t commit -q --allow-empty -m base") && Sh(root, "branch base")
+                && Sh(root, "-c user.name=t -c user.email=t@t commit -q --allow-empty -m \"à pousser\"") && Sh(root, "branch -q -u base"))
+            {
+                File.WriteAllText(Path.Combine(root, "a.txt"), "x");
+                // Un fsmonitor configure par le depot ne doit jamais etre lance par Bip.
+                File.WriteAllText(Path.Combine(root, "mon.sh"), "#!/bin/sh\necho x > lance.txt\n");
+                Sh(root, "config core.fsmonitor ./mon.sh");
+                var real = Git.Status(root);
+                Check("vrai depot : branche, avance, fichiers", real != null && real.Branch == "main" && real.Upstream && real.Ahead == 1 && real.Files.Contains("? a.txt"));
+                var up = Git.Unpushed(root);
+                Check("commits a pousser", up != null && up.Count == 1 && up[0] == "à pousser");
+                Check("fsmonitor du depot jamais lance", !File.Exists(Path.Combine(root, "lance.txt")));
+                Sh(root, "status");
+                Console.WriteLine("    (temoin : git status nu " + (File.Exists(Path.Combine(root, "lance.txt")) ? "lance bien le fsmonitor)" : "ne l'a pas lance)"));
+            }
+            else Console.WriteLine("    Git absent : lecture reelle non testee");
+        }
+        finally { foreach (var f in Directory.GetFiles(root, "*", SearchOption.AllDirectories)) File.SetAttributes(f, FileAttributes.Normal); Clean(root); }
 
         Console.WriteLine("Lecteur JSON");
         var o = Json.Obj(Json.Parse("{\"a\":\"\\u00e9t\\u00e9 \\\"x\\\"\\n\",\"n\":42,\"big\":12345678901,\"f\":1.5e2,\"neg\":-3,\"t\":true,\"z\":null,\"arr\":[1,{\"b\":[]}],\"e\":{}}"));

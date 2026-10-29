@@ -215,10 +215,19 @@ namespace ClaudeNotch
                 case "WebFetch": s = Json.Str(input, "url"); break;
                 case "WebSearch": s = Json.Str(input, "query"); break;
                 case "Task": case "Agent": s = Json.Str(input, "description"); break;
-                default: s = input == null || input.Count == 0 ? null : Json.Write(input); break;
+                // Outils MCP et inconnus : les noms des parametres et des valeurs courtes, jamais
+                // l'entree entiere (un corps de requete, un document peuvent porter un secret).
+                default: s = input == null || input.Count == 0 ? null : string.Join(", ", input.Select(kv => kv.Key + "=" + Brief(kv.Value))); break;
             }
             s = Mask(s ?? "");
             return s.Length > 2000 ? s.Substring(0, 2000) + " …" : s;
+        }
+
+        // Masquee avant d'etre coupee : un secret coupe en deux echapperait aux motifs.
+        static string Brief(object v)
+        {
+            var t = Mask(v as string ?? Json.Write(v));
+            return t.Length > 80 ? t.Substring(0, 80) + "…" : t;
         }
 
         // Chaque motif garde son prefixe (groupe 1) et remplace le secret par [masqué].
@@ -242,6 +251,16 @@ namespace ClaudeNotch
             // NOM=valeur, NOM: valeur (y compris DB_PASSWORD, GITHUB_TOKEN, AccountKey=...)
             P(@"(?i)((?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|access[_-]?token|client[_-]?secret|accountkey|sharedaccesskey|subscription[_-]?key)[""']?\s*[=:]\s*)(""[^""]*""|'[^']*'|[^\s;&""']+)"),
             P(@"(?i)(--?(?:password|passwd|token|api-key|secret)[= ])(""[^""]*""|'[^']*'|\S+)"),
+            // DB_PASS=..., STRIPE_KEY=... : variables en majuscules au nom de secret
+            P(@"(\b[A-Z0-9_]*_(?:PASS|PASSWD|PWD|KEY|SECRET|TOKEN)\b[""']?\s*[=:]\s*)(""[^""]*""|'[^']*'|[^\s;&""']+)"),
+            // mysql -pMotDePasse (colle a l'option ; "-p" seul demande le mot de passe)
+            P(@"(\bmysql(?:dump|admin)?\b[^\r\n|;&]*?\s-p)(""[^""]*""|'[^']*'|[^\s""']+)"),
+            // sshpass -p motdepasse
+            P(@"(?i)(\bsshpass\s+(?:-\w+\s+)*?-p\s*)(""[^""]*""|'[^']*'|\S+)"),
+            // ConvertTo-SecureString "motdepasse" -AsPlainText
+            P(@"(?i)(ConvertTo-SecureString\s+(?:-String\s+)?)(""[^""]*""|'[^']*'|\S+)"),
+            // Cle privee collee dans une commande : tout le bloc
+            P(@"(-----BEGIN [A-Z ]*PRIVATE KEY-----)[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)"),
         };
 
         static Tuple<Regex, string> P(string pattern) { return Tuple.Create(new Regex(pattern), "$1[masqué]"); }
@@ -472,62 +491,40 @@ namespace ClaudeNotch
             return null;
         }
 
-        // ------------------------------------------------------------ cle de regle et motifs risques
+        // ------------------------------------------------------------ cle de regle
 
-        // Commandes risquees : jamais de regle suggeree pour elles.
-        static readonly Regex Risky = new Regex(
-            @"(?i)\brm\s+-\w*[rf]|\bRemove-Item\b|\bdel\s+/|\brd\s+/s|\brmdir\s+/s|\bgit\s+(push|reset|clean|rebase|checkout\s+--|branch\s+-D)|" +
-            @"\b(DROP|TRUNCATE|DELETE\s+FROM)\b|\bformat\s+[a-z]:|\b(curl|wget|iwr|Invoke-WebRequest|irm)\b.*\|\s*(sh|bash|iex|pwsh|powershell)\b|" +
-            @"\bInvoke-Expression\b|\biex\b|\bsudo\b|\bchmod\s+-R|\bchown\b|\bmkfs\b|\bdd\s+if=|\bshutdown\b|\breg\s+(add|delete)\b|\bnpm\s+publish\b|" +
-            @"\bdocker\s+(rm|rmi|system\s+prune|compose\s+(run|exec|down))\b|\bkubectl\s+delete\b|\bterraform\s+(apply|destroy)\b");
+        // Liste blanche : seules ces commandes (tests, compilation, verification, Git en lecture)
+        // peuvent devenir une regle. Une liste d'exclusion ne serait jamais complete (env, xargs,
+        // find -exec, sed...) : tout le reste n'est jamais suggere.
+        static readonly HashSet<string> RuleAllowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "pytest", "jest", "vitest", "tsc", "eslint", "ruff", "mypy",
+              "npm test", "pnpm test", "yarn test", "bun test",
+              "dotnet test", "dotnet build", "cargo test", "cargo build", "cargo check", "cargo clippy",
+              "go test", "go build", "go vet",
+              "git status", "git diff", "git log", "git show" };
 
-        static readonly HashSet<string> MultiWord = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "npm", "pnpm", "yarn", "bun", "git", "docker", "dotnet", "cargo", "go", "poetry", "uv", "kubectl", "make", "gradle", "mvn" };
+        // Scripts du projet : la regle doit nommer le script ("npm run build").
+        static readonly HashSet<string> RuleScripts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "npm run", "pnpm run", "yarn run" };
 
-        // Ces programmes ne deviennent jamais une regle a eux seuls : interpretes, shells,
-        // reseau, suppression ou deplacement de fichiers, elevation, installation.
-        static readonly HashSet<string> NeverAlone = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "git", "docker", "kubectl", "npm", "pnpm", "yarn", "bun", "dotnet", "cargo", "go", "uv", "poetry", "make", "gradle", "mvn",
-              "rm", "del", "erase", "rmdir", "rd", "mv", "move", "ren", "rename", "cp", "copy", "xcopy", "robocopy",
-              "node", "python", "python3", "py", "ruby", "perl", "php", "java", "deno", "npx", "pip", "pip3", "pipx",
-              "cmd", "cmd.exe", "pwsh", "powershell", "bash", "sh", "zsh", "wsl", "start", "Start-Process", "Invoke-Expression", "iex",
-              "curl", "wget", "iwr", "irm", "Invoke-WebRequest", "Invoke-RestMethod", "ssh", "scp", "sftp", "ftp", "nc", "telnet",
-              "sudo", "runas", "su", "chmod", "chown", "icacls", "takeown", "reg", "regedit", "sc", "schtasks", "net", "netsh",
-              "winget", "choco", "scoop", "msiexec", "Remove-Item", "Move-Item", "Copy-Item", "Set-Content", "Out-File", "Add-Content" };
-
-        // Sous-commandes qui executent ou installent n'importe quoi : la regle doit nommer
-        // le script ("npm run test"), sinon pas de regle.
-        static readonly HashSet<string> NeedsTarget = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "npm run", "npm exec", "npm x", "npm install", "npm i", "npm add", "pnpm run", "pnpm exec", "pnpm dlx", "pnpm add", "pnpm install",
-              "yarn run", "yarn exec", "yarn dlx", "yarn add", "bun run", "bun x", "bun add", "dotnet run", "dotnet tool", "cargo run", "cargo install",
-              "go run", "go install", "uv run", "uv pip", "uv tool", "poetry run", "poetry add", "docker run", "docker exec", "docker compose",
-              "kubectl exec", "kubectl apply" };
-
-        // "npm test -- --watch" -> "npm test" ; "pytest -q" -> "pytest". Null si la commande
-        // est composee (&&, |, ;, >) ou risquee : pas de regle pour elle.
+        // "npm test -- --watch" -> "npm test" ; "pytest -q" -> "pytest". Null si la commande est
+        // composee (&&, &, |, ;, >, <, saut de ligne...) ou hors liste blanche : pas de regle pour elle.
         public static string RuleKey(string command)
         {
             if (string.IsNullOrWhiteSpace(command)) return null;
             var c = command.Trim();
-            if (Regex.IsMatch(c, @"&&|\|\||[|;><`]|\$\(") || Risky.IsMatch(c)) return null;
+            if (Regex.IsMatch(c, @"[&|;<>`\r\n]|\$\(")) return null;
             var tok = c.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-            if (tok.Length == 0) return null;
-            string key = tok[0];
-            if (MultiWord.Contains(tok[0]))
+            // "git.exe status" = "git status"
+            if (tok[0].EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) tok[0] = tok[0].Substring(0, tok[0].Length - 4);
+            if (tok.Length >= 2)
             {
-                // "git --no-pager log" ou "git -C x status" : pas de regle (elle vaudrait "git" entier).
-                if (tok.Length < 2 || tok[1].StartsWith("-")) return null;
-                key = tok[0] + " " + tok[1];
-                if (NeedsTarget.Contains(key))
-                {
-                    if (tok.Length < 3 || tok[2].StartsWith("-")) return null;
-                    key += " " + tok[2];
-                }
-                if (Risky.IsMatch(key)) return null;
-                return key;
+                var two = tok[0] + " " + tok[1];
+                if (RuleAllowed.Contains(two)) return two;
+                if (RuleScripts.Contains(two))
+                    return tok.Length >= 3 && Regex.IsMatch(tok[2], @"^[A-Za-z0-9][\w:.-]*$") ? two + " " + tok[2] : null;
             }
-            if (NeverAlone.Contains(key) || key.Contains("\\") || key.Contains("/")) return null;
-            return key;
+            return RuleAllowed.Contains(tok[0]) ? tok[0] : null;
         }
     }
 }

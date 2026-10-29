@@ -46,6 +46,18 @@ static class AuditTests
         Masked("az storage --connection-string \"AccountKey=QWERTYUIOPasdfgh==;\"", "QWERTYUIOPasdfgh");
         Masked("https://api.example.com/v1?access_token=zzzzyyyyxxxx", "zzzzyyyyxxxx");
         Check("texte ordinaire intact", Audit.Mask("npm run build -- --prod") == "npm run build -- --prod");
+        Masked("mysql -u root -pMotDePasse42 app", "MotDePasse42");
+        Masked("mysqldump -h db -pS3cr3t base > x.sql", "S3cr3t");
+        Check("mysql -p seul (demande le mot de passe) intact", Audit.Mask("mysql -u root -p app") == "mysql -u root -p app");
+        Masked("sshpass -p hunter2 ssh admin@host", "hunter2");
+        Masked("$s = ConvertTo-SecureString \"Azerty123!\" -AsPlainText -Force", "Azerty123!");
+        Masked("echo '-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXk\n-----END OPENSSH PRIVATE KEY-----' > id", "b3BlbnNzaC1rZXk");
+        Masked("set DB_PASS=tralala99", "tralala99");
+        Masked("export STRIPE_KEY=rk_abcdef123456", "rk_abcdef123456");
+        var mcp = Audit.Summarize("mcp__crm__update", new Dictionary<string, object>
+            { { "query", "clients actifs" }, { "body", new string('x', 300) }, { "auth", "token=abcd1234efgh5678" } });
+        Check("outil MCP : parametres et valeurs courtes", mcp.Contains("query=clients actifs") && mcp.Contains("body=" + new string('x', 80) + "…") && !mcp.Contains(new string('x', 81)));
+        Check("outil MCP : secret masque avant la coupe", !mcp.Contains("abcd1234efgh5678") && mcp.Contains("[masqué]"));
 
         Console.WriteLine("Cle des regles suggerees");
         Func<string, string> k = Audit.RuleKey;
@@ -63,6 +75,18 @@ static class AuditTests
         Check("git push -> aucune", k("git push origin main") == null);
         Check("commande composee -> aucune", k("npm test && npm run build") == null);
         Check("redirection -> aucune", k("echo x > f.txt") == null);
+        Check("& simple -> aucune", k("npm test & calc") == null);
+        Check("saut de ligne -> aucune", k("npm test\nrm -rf x") == null);
+        Check("retour chariot -> aucune", k("pytest\rdel x") == null);
+        Check("git.exe status -> git status", k("git.exe status") == "git status");
+        Check("python.exe -> aucune", k("python.exe -c x") == null);
+        Check("powershell.exe -> aucune", k("powershell.exe -c x") == null);
+        Check("hors liste : env, xargs, find, sed, gh -> aucune",
+              k("env FOO=1 npm test") == null && k("xargs rm") == null && k("find . -delete") == null
+              && k("sed -i s/a/b/ f") == null && k("gh repo delete x") == null);
+        Check("bip todo -> aucune (toujours une demande)", k("bip todo \"x\"") == null);
+        Check("script au nom douteux -> aucune", k("npm run $(x)") == null && k("npm run -s") == null);
+        Check("dotnet build -> dotnet build", k("dotnet build -c Release") == "dotnet build");
 
         Console.WriteLine("Chainage des empreintes");
         var root = Path.Combine(Path.GetTempPath(), "bip-tests-" + Guid.NewGuid().ToString("N"));
@@ -84,8 +108,7 @@ static class AuditTests
         finally { Clean(root); }
 
         Console.WriteLine("Regroupement et reprise");
-        Check("docker compose up -> docker compose up", k("docker compose up") == "docker compose up");
-        Check("docker compose run -> aucune", k("docker compose run web sh") == null);
+        Check("docker compose up -> aucune (hors liste blanche)", k("docker compose up") == null);
         root = Path.Combine(Path.GetTempPath(), "bip-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         try

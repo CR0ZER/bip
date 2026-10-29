@@ -51,8 +51,8 @@ if not defined PLACED (
 
 rem bip.exe : la commande "bip run", en console pour partager le terminal.
 "%CSC%" /nologo /target:exe /optimize+ /warn:1 ^
-  /out:"%~dp0bip.exe" /r:System.dll ^
-  "%~dp0src\BipCli.cs" "%~dp0src\Version.cs"
+  /out:"%~dp0bip.exe" /r:System.dll /r:System.Core.dll ^
+  "%~dp0src\BipCli.cs" "%~dp0src\Version.cs" "%~dp0src\Audit.cs" "%~dp0src\Json.cs"
 if errorlevel 1 (
   echo.
   echo Compilation de bip echouee.

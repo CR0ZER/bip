@@ -46,7 +46,8 @@ static class BipCli
         }
         string file = Path.Combine(Root, "state", "run-" + pid + ".state");
         string dir = Environment.CurrentDirectory;
-        string label = command.Replace("|", "¦").Replace("\r", " ").Replace("\n", " ");
+        // Masquee comme au journal d'audit : le libelle s'affiche dans l'encoche (partage d'ecran).
+        string label = ClaudeNotch.Audit.Mask(command).Replace("|", "¦").Replace("\r", " ").Replace("\n", " ");
         if (label.Length > 80) label = label.Substring(0, 77) + "…";
 
         bool interrupted = false;

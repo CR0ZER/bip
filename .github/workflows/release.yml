@@ -7,14 +7,18 @@ on:
   push:
     tags: ["v*"]
 
+# contents : publier la release ; id-token et attestations : attestation de provenance du zip.
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
+# Actions epinglees par empreinte de commit (un tag peut etre deplace) ; version en commentaire.
 jobs:
   release:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Le tag correspond a la version du code
         shell: pwsh
@@ -43,6 +47,13 @@ jobs:
           Set-Content "$name.zip.sha256" "$hash  $name.zip" -Encoding ascii -NoNewline
           "Empreinte SHA-256 : $hash"
 
+      # Prouve que le zip a ete construit par ce workflow, depuis ce depot :
+      # gh attestation verify Bip-vX.Y.Z.zip -R CR0ZER/bip
+      - name: Attestation de provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: Bip-${{ github.ref_name }}.zip
+
       - name: Notes de version (CHANGELOG.md)
         shell: pwsh
         run: |
@@ -54,7 +65,7 @@ jobs:
           if ($end -lt 0) { $end = $lines.Count }
           $notes = $lines[($start + 1)..($end - 1)]
           $hash = Get-Content "Bip-${{ github.ref_name }}.zip.sha256"
-          $notes += "", "---", "", "SHA-256 : ``$hash``"
+          $notes += "", "---", "", "SHA-256 : ``$hash``", "", "Provenance : ``gh attestation verify Bip-${{ github.ref_name }}.zip -R CR0ZER/bip``"
           Set-Content notes.md $notes -Encoding utf8
 
       - name: Publication

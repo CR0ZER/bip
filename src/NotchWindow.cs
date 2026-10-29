@@ -1147,7 +1147,8 @@ namespace ClaudeNotch
             foreach (var c in rules)
             {
                 var rule = c;
-                p.Children.Add(Link(rule.Rule, (rule.Scope == "partout" ? "partout" : Session.NameOf(rule.Dir)) + " · " + rule.T.ToString("dd/MM"), "✕", () =>
+                p.Children.Add(Link(rule.Rule, (rule.Scope == "partout" ? "partout" : Session.NameOf(rule.Dir)) + " · " + rule.T.ToString("dd/MM")
+                                    + (Rules.StillSuggested(rule) ? "" : " · plus suggérée par Bip"), "✕", () =>
                 {
                     try { Rules.Remove(rule); } catch (Exception ex) { Program.Log("regle : " + ex.Message); }
                     Redraw();
@@ -1611,6 +1612,7 @@ namespace ClaudeNotch
         // -------- permission
 
         static readonly HashSet<string> Shells = new HashSet<string> { "Bash", "PowerShell" };
+        const double CODE_MAX_H = 260;   // zone de la commande, au-dela : defilement
 
         bool BuildPermission(StackPanel body, Pending p, Func<bool> armed)
         {
@@ -1625,16 +1627,29 @@ namespace ClaudeNotch
                 body.Children.Add(new TextBlock { Text = "Selon Claude : " + Safe(desc), Foreground = Muted, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) });
 
             var code = new TextBlock { FontFamily = Mono, FontSize = 12, LineHeight = 18, Foreground = Code, TextWrapping = TextWrapping.Wrap };
-            FillDetails(code, tool, input);
+            var hidden = FillDetails(code, tool, input);
+            // Avertissement sur ce qui est vraiment affiche : lignes nombreuses ou tres longues.
+            // Largeur du texte : contenu (EXP_W - 2 x EXP_PAD), moins la carte (2 x 14) et le cadre (2 x 11).
+            code.Measure(new Size(EXP_W - 2 * EXP_PAD - 2 * 14 - 2 * 11, double.PositiveInfinity));
             int nl = code.Inlines.OfType<LineBreak>().Count() + 1;
-            if (nl > 12)
-                body.Children.Add(new TextBlock { Text = nl + " lignes : fais défiler pour tout lire avant d'autoriser.", Foreground = WaitRed, FontSize = 12, Margin = new Thickness(0, 0, 0, 4) });
+            if (code.DesiredSize.Height > CODE_MAX_H)
+                body.Children.Add(new TextBlock { Text = (nl > 1 ? nl + " lignes" : "Commande longue") + " : fais défiler pour tout lire avant d'autoriser.",
+                                                  Foreground = WaitRed, FontSize = 12, Margin = new Thickness(0, 0, 0, 4) });
             body.Children.Add(new Border
             {
                 Background = Black, BorderBrush = Btn2, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8),
                 Padding = new Thickness(10, 8, 10, 8), Margin = new Thickness(0, 0, 0, 12),
-                Child = new ScrollViewer { Content = code, MaxHeight = 260, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }
+                Child = new ScrollViewer { Content = code, MaxHeight = CODE_MAX_H, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }
             });
+
+            // Une partie n'est pas montree : le dire avant les boutons, avec ce qui manque.
+            var missing = new List<string>();
+            if (hidden.Lines > 0) missing.Add(hidden.Lines + (hidden.Lines > 1 ? " lignes" : " ligne"));
+            if (hidden.Edits > 0) missing.Add(hidden.Edits + (hidden.Edits > 1 ? " modifications" : " modification"));
+            if (hidden.Chars > 0) missing.Add(hidden.Chars + (hidden.Chars > 1 ? " caractères" : " caractère"));
+            if (missing.Count > 0)
+                body.Children.Add(new TextBlock { Text = "Non affiché : " + string.Join(" · ", missing) + ". « Répondre dans Claude » pour tout voir.",
+                                                  Foreground = WaitRed, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, -4, 0, 10) });
 
             // Ligne principale toujours au meme endroit : Autoriser, Refuser, Repondre dans Claude.
             var buttons = new WrapPanel();
@@ -1728,12 +1743,32 @@ namespace ClaudeNotch
             return "Utiliser l'outil « " + tool + " » ?";
         }
 
-        void FillDetails(TextBlock tb, string tool, Dictionary<string, object> input)
+        // Suites de 8 espaces ou tabulations ou plus : rendues visibles dans une commande, pour
+        // qu'aucune fin de commande ne soit poussee hors de la vue par des blancs.
+        static readonly System.Text.RegularExpressions.Regex Blanks = new System.Text.RegularExpressions.Regex(@"[ \t]{8,}");
+
+        // Ce qui n'est pas affiche dans la carte : signale au-dessus des boutons.
+        class Hidden { public int Lines, Edits, Chars; }
+
+        Hidden FillDetails(TextBlock tb, string tool, Dictionary<string, object> input)
         {
+            var hid = new Hidden();
             Action<string, Brush> line = (s, b) =>
             {
                 if (tb.Inlines.Count > 0) tb.Inlines.Add(new LineBreak());
                 tb.Inlines.Add(new Run(Safe(s)) { Foreground = b ?? Code });
+            };
+            Action<string> command = s =>
+            {
+                if (tb.Inlines.Count > 0) tb.Inlines.Add(new LineBreak());
+                int at = 0;
+                foreach (System.Text.RegularExpressions.Match m in Blanks.Matches(s))
+                {
+                    if (m.Index > at) tb.Inlines.Add(new Run(Safe(s.Substring(at, m.Index - at))) { Foreground = Code });
+                    tb.Inlines.Add(new Run(" [" + m.Length + " espaces] ") { Foreground = Muted });
+                    at = m.Index + m.Length;
+                }
+                if (at < s.Length) tb.Inlines.Add(new Run(Safe(s.Substring(at))) { Foreground = Code });
             };
 
             string path = Json.Str(input, "file_path") ?? Json.Str(input, "notebook_path") ?? Json.Str(input, "path");
@@ -1741,50 +1776,51 @@ namespace ClaudeNotch
             {
                 case "Bash":
                 case "PowerShell":
-                    line(Json.Str(input, "command") ?? "", null);
-                    return;
+                    command(Json.Str(input, "command") ?? "");
+                    return hid;
                 case "Edit":
                     line(path ?? "", Muted);
-                    Diff(line, Json.Str(input, "old_string"), Json.Str(input, "new_string"));
-                    return;
+                    Diff(line, Json.Str(input, "old_string"), Json.Str(input, "new_string"), hid);
+                    return hid;
                 case "MultiEdit":
                     line(path ?? "", Muted);
                     var edits = Json.Arr(Json.Get(input, "edits")) ?? new object[0];
-                    foreach (var e in edits.Take(3))
-                        Diff(line, Json.Str(Json.Obj(e), "old_string"), Json.Str(Json.Obj(e), "new_string"));
-                    if (edits.Length > 3) line("… " + (edits.Length - 3) + " autres modifications", Muted);
-                    return;
+                    foreach (var e in edits.Take(10))
+                        Diff(line, Json.Str(Json.Obj(e), "old_string"), Json.Str(Json.Obj(e), "new_string"), hid);
+                    if (edits.Length > 10) { line("… " + (edits.Length - 10) + " autres modifications", Muted); hid.Edits += edits.Length - 10; }
+                    return hid;
                 case "Write":
                     line(path ?? "", Muted);
-                    Excerpt(line, Json.Str(input, "content"), "", null, 12);
-                    return;
+                    Excerpt(line, Json.Str(input, "content"), "", null, 60, hid);
+                    return hid;
                 case "WebFetch":
                     line(Json.Str(input, "url") ?? "", null);
-                    return;
+                    return hid;
                 case "WebSearch":
                     line(Json.Str(input, "query") ?? "", null);
-                    return;
+                    return hid;
             }
             foreach (var kv in input)
             {
                 var val = kv.Value as string ?? Json.Write(kv.Value);
-                if (val.Length > 400) val = val.Substring(0, 400) + " …";
-                line(kv.Key + " : " + val, null);
+                if (val.Length > 400) { hid.Chars += val.Length - 400; val = val.Substring(0, 400) + " …"; }
+                command(kv.Key + " : " + val);
             }
+            return hid;
         }
 
-        static void Diff(Action<string, Brush> line, string oldS, string newS)
+        static void Diff(Action<string, Brush> line, string oldS, string newS, Hidden hid)
         {
-            Excerpt(line, oldS, "- ", DiffDel, 8);
-            Excerpt(line, newS, "+ ", DiffAdd, 8);
+            Excerpt(line, oldS, "- ", DiffDel, 8, hid);
+            Excerpt(line, newS, "+ ", DiffAdd, 8, hid);
         }
 
-        static void Excerpt(Action<string, Brush> line, string text, string prefix, Brush b, int max)
+        static void Excerpt(Action<string, Brush> line, string text, string prefix, Brush b, int max, Hidden hid)
         {
             if (string.IsNullOrEmpty(text)) return;
             var lines = text.Replace("\r", "").Split('\n');
             foreach (var l in lines.Take(max)) line(prefix + l, b);
-            if (lines.Length > max) line(prefix + "… (" + (lines.Length - max) + " lignes de plus)", Muted);
+            if (lines.Length > max) { line(prefix + "… (" + (lines.Length - max) + " lignes de plus)", Muted); hid.Lines += lines.Length - max; }
         }
 
         // -------- AskUserQuestion

@@ -89,6 +89,15 @@ namespace ClaudeNotch
             });
         }
 
+        // Regle creee avant la liste blanche (v0.4) que Bip ne proposerait plus : signalee dans les
+        // reglages, jamais retiree d'office. "Bash(npm test:*)" -> "npm test".
+        public static bool StillSuggested(CreatedRule c)
+        {
+            var r = c.Rule ?? "";
+            int i = r.IndexOf('('), j = r.LastIndexOf(":*)");
+            return i >= 0 && j > i && Audit.RuleKey(r.Substring(i + 1, j - i - 1)) == r.Substring(i + 1, j - i - 1);
+        }
+
         public static void Ignore(Suggestion s)
         {
             Directory.CreateDirectory(Folder);

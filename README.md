@@ -188,7 +188,9 @@ dossier), puis lance `installer.cmd`.
 > Les exécutables ne sont pas signés : au premier lancement, Windows SmartScreen peut afficher
 > « Windows a protégé votre ordinateur ». Clique sur *Informations complémentaires* →
 > *Exécuter quand même*. L'empreinte SHA-256 du zip est publiée avec chaque release, et tu
-> peux toujours compiler toi-même.
+> peux toujours compiler toi-même. Depuis la 0.4.0, chaque zip porte aussi une attestation de
+> provenance GitHub, qui prouve qu'il a été construit par le workflow de ce dépôt :
+> `gh attestation verify Bip-v0.4.0.zip -R CR0ZER/bip`.
 
 **Depuis les sources** (compilé sur ton poste, sans rien installer) :
 
@@ -467,7 +469,9 @@ folder (for instance `Documents\Bip`, not Downloads: the hooks point to that fol
 
 > The executables are not signed: on first launch, Windows SmartScreen may say "Windows protected
 > your PC". Click *More info* → *Run anyway*. Each release ships the zip's SHA-256 checksum, and
-> you can always build it yourself.
+> you can always build it yourself. Since 0.4.0, each zip also carries a GitHub provenance
+> attestation proving it was built by this repository's workflow:
+> `gh attestation verify Bip-v0.4.0.zip -R CR0ZER/bip`.
 
 **From source** (built on your machine, nothing to install):
 

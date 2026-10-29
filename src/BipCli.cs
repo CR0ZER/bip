@@ -1,4 +1,5 @@
 // bip run <commande>   lance la commande dans ce terminal et la suit dans l'encoche
+// bip todo "texte"     ajoute une tache a la to-do de l'encoche (todo.txt)
 // bip --version
 //
 // Compile en console (/target:exe) : la commande partage le terminal, sa sortie, ses
@@ -26,12 +27,25 @@ static class BipCli
             Console.WriteLine("Bip v" + ClaudeNotch.AppVersion.Text);
             return 0;
         }
+        if (first == "todo" && args.Length > 1)
+        {
+            // Une ligne propre, 120 caracteres au plus. Claude peut l'utiliser aussi : la commande
+            // passe alors par une demande d'autorisation (jamais de regle suggeree pour elle).
+            string task = ClaudeNotch.Todo.Clean(string.Join(" ", args, 1, args.Length - 1));
+            if (task.Length > 0)
+            {
+                ClaudeNotch.Todo.Add(Root, task);
+                Console.WriteLine("Ajouté à la to-do de Bip : " + task);
+                return 0;
+            }
+        }
         string command = first == "run" ? RawAfterRun() : "";
         if (command.Length == 0)
         {
             Console.WriteLine("Bip v" + ClaudeNotch.AppVersion.Text + " — suivre une commande longue dans l'encoche");
             Console.WriteLine();
             Console.WriteLine("  bip run <commande>     ex. : bip run npm run build");
+            Console.WriteLine("  bip todo \"texte\"       ajoute une tâche à la to-do de l'encoche");
             Console.WriteLine("  bip --version");
             return first == "" || first == "help" || first == "-h" || first == "--help" ? 0 : 2;
         }

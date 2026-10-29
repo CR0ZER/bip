@@ -99,6 +99,7 @@ namespace ClaudeNotch
         public DateTime DndUntil = DateTime.MinValue;   // "ne pas deranger" jusqu'a cette heure
         public bool Dnd { get { return DateTime.Now < DndUntil; } }
         public bool AutoDnd = true;      // sourdine automatique pendant les appels
+        public bool TodoOpen;            // to-do depliee dans l'encoche
 
         public Config(string path)
         {
@@ -114,6 +115,7 @@ namespace ClaudeNotch
                     if (k == "flash") Flash = v != "0";
                     else if (k == "dnd") { long t; if (long.TryParse(v, out t)) DndUntil = new DateTime(t); }
                     else if (k == "autodnd") AutoDnd = v != "0";
+                    else if (k == "todo") TodoOpen = v == "1";
                 }
             }
             catch { }
@@ -125,7 +127,8 @@ namespace ClaudeNotch
             {
                 File.WriteAllText(_path, "flash=" + (Flash ? "1" : "0") + Environment.NewLine +
                                          "dnd=" + DndUntil.Ticks + Environment.NewLine +
-                                         "autodnd=" + (AutoDnd ? "1" : "0") + Environment.NewLine);
+                                         "autodnd=" + (AutoDnd ? "1" : "0") + Environment.NewLine +
+                                         "todo=" + (TodoOpen ? "1" : "0") + Environment.NewLine);
             }
             catch { }
         }

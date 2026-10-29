@@ -5,6 +5,7 @@ NotchHook.new
 # etat et reglages locaux
 state/
 config.txt
+todo.txt
 notch.log
 journal/
 audit/

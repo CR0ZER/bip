@@ -188,6 +188,16 @@ namespace ClaudeNotch
             Clickable(_menuBtn, ToggleSettings, () => true);
             _inner.Children.Add(_menuBtn);
 
+            var todoIcon = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            todoIcon.Children.Add(new Border { Width = 10, Height = 10, CornerRadius = new CornerRadius(2.5), BorderBrush = Muted, BorderThickness = new Thickness(1.3), VerticalAlignment = VerticalAlignment.Center });
+            _todoCount = new TextBlock { FontSize = 11.5, Foreground = Muted, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(5, 0, 0, 0) };
+            todoIcon.Children.Add(_todoCount);
+            _todoBtn = new Border { Height = 18, Padding = new Thickness(6, 0, 6, 0), CornerRadius = new CornerRadius(5), Background = Brushes.Transparent, Child = todoIcon,
+                                    HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 3, 37, 0),
+                                    ToolTip = "To-do", Opacity = 0, Visibility = Visibility.Collapsed };
+            Clickable(_todoBtn, ToggleTodo, () => true);
+            _inner.Children.Add(_todoBtn);
+
             // En miroir, en haut a gauche : "ne pas deranger" actif et pourquoi. Un clic la leve.
             _dndTag = new TextBlock { FontSize = 11.5, Foreground = Muted, VerticalAlignment = VerticalAlignment.Center };
             _dndTagBox = new Border { Height = 18, Padding = new Thickness(6, 0, 6, 0), CornerRadius = new CornerRadius(5), Background = Brushes.Transparent,
@@ -568,6 +578,9 @@ namespace ClaudeNotch
                 _settingsOpen = false;
                 _menuBtn.Visibility = Visibility.Visible;
                 FadeTo(_menuBtn, 1, 180, 250);
+                _todoAdding = false;
+                _todoBtn.Visibility = Visibility.Visible;
+                FadeTo(_todoBtn, 1, 180, 250);
                 FadeTo(_row, 0, 100, 0);
                 HidePeek(token);
                 _scroll.Visibility = Visibility.Visible;
@@ -594,6 +607,9 @@ namespace ClaudeNotch
                 _menuBtn.BeginAnimation(OpacityProperty, null);
                 _menuBtn.Opacity = 0;
                 _menuBtn.Visibility = Visibility.Collapsed;
+                _todoBtn.BeginAnimation(OpacityProperty, null);
+                _todoBtn.Opacity = 0;
+                _todoBtn.Visibility = Visibility.Collapsed;
                 var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(100));
                 fade.Completed += (s, e) =>
                 {
@@ -1062,7 +1078,8 @@ namespace ClaudeNotch
                                                          + string.Join(",", VisibleAgents(v.S).Select(a => a.Tuid + (a.End != null ? "+" : "")))))
                        + "|" + string.Join(",", _pending.Select(p => p.GetHashCode()))
                        + "|" + (_settingsOpen ? Quiet + ":" + _cfg.AutoDnd + ":" + _cfg.Flash + ":" + Rules.Created().Count : "")
-                       + "|" + (Quiet ? DndWhy() : "");
+                       + "|" + (Quiet ? DndWhy() : "")
+                       + "|" + Todo.Sig(Program.Root) + ":" + _cfg.TodoOpen + ":" + _todoAdding + ":" + string.Join(",", _todoDone.Keys);
             if (sig == _panelSig && !opening) return;
             // Pendant une saisie, on ne reconstruit rien : le focus serait perdu.
             if (!opening && IsActive && Keyboard.FocusedElement is TextBox) return;
@@ -1071,6 +1088,8 @@ namespace ClaudeNotch
             _tickers.Clear();
             _content.Children.Clear();
             UpdateDndTag();
+            int tasks = Todo.Load(Program.Root).Count;
+            _todoCount.Text = tasks > 0 ? tasks.ToString() : "";
             if (Quiet && _views.Count > 0) _content.Children.Add(DndBanner());
 
             // Les demandes d'abord, en grand ; puis les sessions, en attente d'abord.
@@ -1089,6 +1108,8 @@ namespace ClaudeNotch
             for (int i = 0; i < rows.Count; i++) _content.Children.Add(Row(rows[i], i > 0));
             if (_views.Count == 0)
                 _content.Children.Add(EmptyPanel());
+            else if (_cfg.TodoOpen)
+                _content.Children.Add(TodoBlock(int.MaxValue));
             if (_settingsOpen)
             {
                 _content.Children.Add(new Rectangle { Height = 1, Fill = Btn2, Margin = new Thickness(0, 10, 0, 8) });
@@ -1125,6 +1146,10 @@ namespace ClaudeNotch
         // ------------------------------------------------------------ reglages (bouton en haut a droite)
 
         readonly Border _menuBtn;
+        readonly Border _todoBtn;                  // a gauche du bouton de reglages : la to-do
+        readonly TextBlock _todoCount;
+        bool _todoAdding, _todoFocus;              // champ "+ ajouter" ouvert ; a focaliser (une seule fois, apres le clic)
+        readonly Dictionary<string, DateTime> _todoDone = new Dictionary<string, DateTime>();   // cochees, effacees 3 s apres
         FrameworkElement _settingsEl;
 
         void ToggleSettings()
@@ -1314,7 +1339,106 @@ namespace ClaudeNotch
             var audit = AuditToday();
             if (audit != null)
                 panel.Children.Add(new TextBlock { Text = audit, FontSize = 12, Foreground = Muted, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(4, 2, 4, 2) });
+            panel.Children.Add(TodoBlock(_cfg.TodoOpen ? int.MaxValue : 3));
             return panel;
+        }
+
+        // ------------------------------------------------------------ to-do
+
+        void ToggleTodo()
+        {
+            _cfg.TodoOpen = !_cfg.TodoOpen;
+            _cfg.Save();
+            Redraw();
+        }
+
+        // Les taches (au plus "max", puis "+N"), et "+ ajouter". Liste vide : "+ ajouter" seul, discret.
+        FrameworkElement TodoBlock(int max)
+        {
+            var p = new StackPanel { Background = Brushes.Transparent, Cursor = Cursors.Arrow };
+            p.MouseLeftButtonUp += (s, e) => e.Handled = true;   // encoche vide : pas d'ouverture de Claude ici
+            p.Children.Add(new Rectangle { Height = 1, Fill = Sep, Margin = new Thickness(0, 6, 0, 4) });
+            var tasks = Todo.Load(Program.Root);
+            if (tasks.Count > 0) p.Children.Add(new TextBlock { Text = "À faire", FontSize = 12, Foreground = Muted, Margin = new Thickness(4, 2, 0, 2) });
+            foreach (var t in tasks.Take(max)) p.Children.Add(TodoRow(t));
+            if (tasks.Count > max)
+            {
+                var more = new Border { Padding = new Thickness(30, 2, 8, 2), CornerRadius = new CornerRadius(6), Background = Brushes.Transparent, HorizontalAlignment = HorizontalAlignment.Left,
+                                        Child = new TextBlock { Text = "+" + (tasks.Count - max) + (tasks.Count - max > 1 ? " autres" : " autre"), FontSize = 12, Foreground = Muted } };
+                Clickable(more, ToggleTodo, SettingsArmed);
+                p.Children.Add(more);
+            }
+            p.Children.Add(TodoAdd(tasks.Count == 0));
+            return p;
+        }
+
+        // Case, puis la tache. Cochee : barree et verte 3 s, puis effacee ; un second clic annule.
+        FrameworkElement TodoRow(string task)
+        {
+            bool done = _todoDone.ContainsKey(task);
+            var g = new Grid { Height = 26 };
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            g.Children.Add(new Border { Width = 12, Height = 12, CornerRadius = new CornerRadius(3), BorderThickness = new Thickness(1.3), VerticalAlignment = VerticalAlignment.Center,
+                                        BorderBrush = done ? OnGreen : Muted, Background = done ? OnGreen : Brushes.Transparent, Margin = new Thickness(6, 0, 12, 0) });
+            var label = new TextBlock { Text = Safe(task), FontSize = 12.5, Foreground = done ? Muted : Code, VerticalAlignment = VerticalAlignment.Center,
+                                        TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = task };
+            if (done) label.TextDecorations = TextDecorations.Strikethrough;
+            Grid.SetColumn(label, 1);
+            g.Children.Add(label);
+            var row = new Border { Child = g, CornerRadius = new CornerRadius(6), Background = Brushes.Transparent, ToolTip = done ? "Annuler" : "Fait" };
+            Clickable(row, () => ToggleDone(task), SettingsArmed);
+            return row;
+        }
+
+        void ToggleDone(string task)
+        {
+            if (_todoDone.Remove(task)) { Redraw(); return; }   // second clic dans les 3 s : annule
+            var at = DateTime.Now;
+            _todoDone[task] = at;
+            var t = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            t.Tick += (s, e) =>
+            {
+                t.Stop();
+                DateTime when;
+                if (!_todoDone.TryGetValue(task, out when) || when != at) return;   // annulee, ou recochee depuis
+                _todoDone.Remove(task);
+                try { Todo.Remove(Program.Root, task); } catch (Exception ex) { Program.Log("to-do : " + ex.Message); }
+                if (_form == Form.Expanded) Redraw();
+            };
+            t.Start();
+            Redraw();
+        }
+
+        // "+ ajouter", ou le champ de saisie : Entree ajoute, Echap annule.
+        FrameworkElement TodoAdd(bool discreet)
+        {
+            if (!_todoAdding)
+            {
+                var b = new Border { Padding = new Thickness(6, 4, 8, 4), CornerRadius = new CornerRadius(6), Background = Brushes.Transparent, HorizontalAlignment = HorizontalAlignment.Left,
+                                     Child = new TextBlock { Text = "+ ajouter", FontSize = 12, Foreground = Muted, Opacity = discreet ? 0.7 : 1 } };
+                Clickable(b, () => { _todoAdding = _todoFocus = true; Redraw(); }, SettingsArmed);
+                return b;
+            }
+            var box = new TextBox
+            {
+                FontSize = 12.5, Padding = new Thickness(8, 6, 8, 6), Margin = new Thickness(0, 2, 0, 4), MaxLength = Todo.MaxLen,
+                Background = Black, Foreground = Ink, CaretBrush = Ink, BorderBrush = Always, AcceptsReturn = false
+            };
+            box.PreviewMouseLeftButtonDown += (s, e) => FocusBox(box);
+            box.KeyDown += (s, e) =>
+            {
+                if (e.Key != Key.Enter && e.Key != Key.Escape) return;
+                e.Handled = true;
+                if (e.Key == Key.Enter) try { Todo.Add(Program.Root, box.Text); } catch (Exception ex) { Program.Log("to-do : " + ex.Message); }
+                _todoAdding = false;
+                Keyboard.ClearFocus();
+                if (_activatable) SetActivatable(false);
+                Redraw();
+            };
+            // Le clavier seulement juste apres le clic : un nouveau rendu ne le reprend pas.
+            if (_todoFocus) { _todoFocus = false; Dispatcher.BeginInvoke((Action)(() => FocusBox(box)), DispatcherPriority.Loaded); }
+            return box;
         }
 
         static string StatsText(DayStats st)

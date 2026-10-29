@@ -150,6 +150,26 @@ static class AuditTests
         }
         finally { Clean(root); }
 
+        Console.WriteLine("To-do");
+        Check("une seule ligne, blancs resserres", Todo.Clean("  Regenerer\r\nla   cle\tX ") == "Regenerer la cle X");
+        Check("120 caracteres au plus", Todo.Clean(new string('a', 300)).Length == Todo.MaxLen && Todo.Clean(new string('a', 300)).EndsWith("…"));
+        root = Path.Combine(Path.GetTempPath(), "bip-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            Check("liste vide sans fichier", Todo.Load(root).Count == 0);
+            Todo.Add(root, "Une"); Todo.Add(root, "Deux\nlignes"); Todo.Add(root, "   ");
+            var list = Todo.Load(root);
+            Check("ajouts dans l'ordre, tache vide ignoree", list.Count == 2 && list[0] == "Une" && list[1] == "Deux lignes");
+            File.AppendAllText(Path.Combine(root, "todo.txt"), "\r\n  Ajoutee a la main  \r\n\r\n");
+            Check("modification a la main relue", Todo.Load(root).Count == 3 && Todo.Load(root)[2] == "Ajoutee a la main");
+            var sig = Todo.Sig(root);
+            Todo.Remove(root, "Une");
+            Check("tache cochee retiree, les autres gardees", Todo.Load(root).Count == 2 && Todo.Load(root)[0] == "Deux lignes");
+            Check("signature change avec le fichier", Todo.Sig(root) != sig);
+        }
+        finally { Clean(root); }
+
         Console.WriteLine("Lecteur JSON");
         var o = Json.Obj(Json.Parse("{\"a\":\"\\u00e9t\\u00e9 \\\"x\\\"\\n\",\"n\":42,\"big\":12345678901,\"f\":1.5e2,\"neg\":-3,\"t\":true,\"z\":null,\"arr\":[1,{\"b\":[]}],\"e\":{}}"));
         Check("chaine avec echappements", Json.Str(o, "a") == "été \"x\"\n");

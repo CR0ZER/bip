@@ -151,6 +151,21 @@ avec sa durée. À la fin, Bip s'entrouvre (« npm run build a fini · 4 min 12 
 avec le code de retour). `bip` renvoie le code de la commande : il s'utilise dans un script.
 Une petite croix retire une commande de l'encoche (si elle tourne encore, elle continue).
 
+### Micro to-do list
+
+Une liste de tâches toute simple, pour garder une idée sans changer d'outil : ni dates, ni
+priorités, ni projets.
+
+- **Dans l'encoche vide**, sous le bilan du jour : les 3 premières tâches, puis « +N autres ».
+- **Avec des sessions** : la case en haut de l'encoche dépliée (avec le nombre de tâches) déplie
+  la liste sous les sessions.
+- **« + ajouter »**, Entrée pour valider. **Cocher** une tâche la barre 3 s, puis l'efface ; un
+  second clic pendant ce délai annule.
+- **Depuis un terminal** : `bip todo "Régénérer la clé de staging"`. Claude peut s'en servir aussi
+  si tu le lui demandes (« note dans ma to-do Bip… ») : la commande passe toujours par une demande
+  d'autorisation, et Bip ne propose jamais de règle pour elle.
+- Les tâches sont dans `todo.txt`, dans le dossier de Bip, une par ligne, modifiable à la main.
+
 ### Journal d'audit
 
 Bip garde la trace de **tout ce que les agents font sur le poste** : chaque commande, fichier
@@ -270,7 +285,8 @@ src/
   Model.cs        sessions, journal du jour, demandes en attente, pipe nommé
   NotchHook.cs    le hook appelé par Claude Code
   Agents.cs       sous-agents et titre des sessions
-  BipCli.cs       bip.exe : bip run <commande>
+  BipCli.cs       bip.exe : bip run <commande>, bip todo "texte"
+  Todo.cs         micro to-do list (todo.txt)
   Audit.cs        journal d'audit : écriture chaînée, masquage, lecture
   Rules.cs        règles suggérées
   Report.cs       rapport d'audit HTML
@@ -440,6 +456,20 @@ its duration. When it ends, Bip peeks open ("npm run build a fini · 4 min 12 s"
 code on failure). `bip` returns the command's exit code, so it works in scripts. A small cross
 removes a command from the notch (if it is still running, it keeps running).
 
+#### Micro to-do list
+
+A very simple task list, to keep an idea without switching tools: no dates, no priorities, no
+projects.
+
+- **In the empty notch**, under today's summary: the first 3 tasks, then "+N".
+- **With sessions**: the box at the top of the open notch (with the task count) shows the list
+  under the sessions.
+- **"+ ajouter"** (add), Enter to confirm. **Ticking** a task strikes it out for 3 s, then removes
+  it; a second click within that delay cancels.
+- **From a terminal**: `bip todo "Rotate the staging key"`. Claude can use it too if you ask it
+  to: the command always goes through a permission request, and Bip never suggests a rule for it.
+- Tasks live in `todo.txt`, in Bip's folder, one per line, editable by hand.
+
 #### Audit log
 
 Bip records **everything agents do on the machine**: every command, edited file or fetched page,
@@ -555,7 +585,8 @@ src/
   Model.cs        sessions, daily log, pending requests, named pipe
   NotchHook.cs    the hook called by Claude Code
   Agents.cs       sub-agents and session titles
-  BipCli.cs       bip.exe: bip run <command>
+  BipCli.cs       bip.exe: bip run <command>, bip todo "text"
+  Todo.cs         micro to-do list (todo.txt)
   Audit.cs        audit log: chained writes, masking, reading
   Rules.cs        suggested rules
   Report.cs       HTML audit report

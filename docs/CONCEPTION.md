@@ -211,3 +211,29 @@ Causes et corrections :
 Écarté après mesure : rétrécir aussi la largeur de la fenêtre (aucun gain).
 `NotchHook.exe` coûte environ 70 ms par lancement, en arrière-plan. Chaque appel
 d'outil lance désormais 2 processus, contre 4 avec ClaudeVoyant.
+
+## Performances v0.4.0 (2026-10-30)
+
+Comparé à la v0.3.0, mêmes sessions, dossiers isolés, lancements alternés (Acer Nitro
+ANV15-52, i7-13620H, 32 Go, Windows 11). Les passes pendant lesquelles le clavier ou la souris
+ont servi sont écartées : un survol suffit à déplier l'encoche et fausse la mesure.
+
+| | v0.3.0 | v0.4.0 |
+|---|---|---|
+| Encoche repliée, une session au travail (35 s, 4 passes) | 1,1 à 3,4 %, ~2,2 % | 1,9 à 3,0 %, ~2,4 % |
+| Hook PreToolUse (médiane de 30) | 127 ms | 122 ms |
+| Rapport d'audit, 1 200 évènements (médiane de 3) | 1,05 s | 1,04 s |
+| Relecture du journal après un ajout, 10 000 évènements | 4,6 ms | 0,4 ms |
+| Lecture Git (`git status` de Bip) | — | ~65 ms |
+
+Régression trouvée et corrigée avant la sortie : l'encoche v0.4 montait à 4,3 à 5,8 % d'un
+cœur. Bisection par commit : elle venait du lot « ne pas déranger » (Bip endormi).
+- Un petit Bip endormi était recréé dans l'étiquette « ne pas déranger » à chaque changement
+  de forme. Masqué mais chargé, il s'animait sans fin à 15 images/s et forçait le rendu de
+  toute la fenêtre. Correction à la racine : un Bip invisible (lui ou un parent) arrête ses
+  animations et les reprend en réapparaissant.
+- Les éléments transparents d'un Bip (visages des autres états, lune, « z ») étaient redessinés
+  à chaque image en rendu logiciel. Ils sont maintenant retirés de l'affichage (~1 point).
+
+Appels Git comptés par un faux `git.exe` intercalé dans le PATH : une lecture au premier
+dépliage, aucune au second (moins de 30 s), aucune pendant 60 s encoche fermée.

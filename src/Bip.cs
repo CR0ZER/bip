@@ -71,7 +71,7 @@ namespace ClaudeNotch
                 if (value == _state) return;
                 var from = _state;
                 _state = value;
-                if (IsLoaded) Apply(from, value, true);
+                if (IsLoaded && IsVisible) Apply(from, value, true);
             }
         }
 
@@ -103,13 +103,13 @@ namespace ClaudeNotch
             root.Children.Add(_antennaStraight);
 
             // Antenne pliee (inactif)
-            _antennaBent = new Canvas { Opacity = 0 };
+            _antennaBent = new Canvas { Opacity = 0, Visibility = Visibility.Collapsed };
             _antennaBent.Children.Add(Line("M16,11 Q16,7.5 19.5,7.8", 1.8, _brush));
             _antennaBent.Children.Add(Ell(18.6, 6, 4, 4, _brush));
             root.Children.Add(_antennaBent);
 
             // Antenne en croissant de lune (ne pas deranger)
-            _antennaMoon = new Canvas { Opacity = 0 };
+            _antennaMoon = new Canvas { Opacity = 0, Visibility = Visibility.Collapsed };
             _antennaMoon.Children.Add(Line("M16,11 V6.9", 1.8, _brush));
             _antennaMoon.Children.Add(new Path { Data = Geometry.Parse("M17.2,2.92 A2.4,2.4 0 1 0 17.2,7.08 A2.1,2.1 0 0 1 17.2,2.92 Z"), Fill = _brush });
             root.Children.Add(_antennaMoon);
@@ -117,6 +117,7 @@ namespace ClaudeNotch
             // Bras leve (attente)
             _arm = Line("M24,16 L28.5,10.5", 3, _brush);
             _arm.Opacity = 0;
+            _arm.Visibility = Visibility.Collapsed;
             _arm.RenderTransform = _armRotate;
             root.Children.Add(_arm);
 
@@ -144,8 +145,11 @@ namespace ClaudeNotch
             root.Children.Add(_badge);
 
             _waitTimer.Tick += OnWaitTick;
-            Loaded += (s, e) => Apply(_state, _state, false);
+            Loaded += (s, e) => { if (IsVisible) Apply(_state, _state, false); };
             Unloaded += (s, e) => StopLoops();
+            // Cache (lui ou un parent) : plus aucune animation. Une boucle d'un Bip masque mais charge
+            // (etiquette "ne pas deranger", encoche repliee) forcait le rendu de toute la fenetre.
+            IsVisibleChanged += (s, e) => { if (!IsLoaded) return; if (IsVisible) Apply(_state, _state, false); else StopLoops(); };
         }
 
         void Apply(BipState from, BipState to, bool animate)
@@ -181,7 +185,7 @@ namespace ClaudeNotch
             if (Still)
             {
                 // Pose fixe : les Z restent visibles, rien ne bouge.
-                if (to == BipState.DoNotDisturb) { _z1.Opacity = 1; _z2.Opacity = 1; }
+                if (to == BipState.DoNotDisturb) foreach (var z in new[] { _z1, _z2 }) { z.Opacity = 1; z.Visibility = Visibility.Visible; }
                 return;
             }
             switch (to)
@@ -219,7 +223,7 @@ namespace ClaudeNotch
             _tilt.BeginAnimation(RotateTransform.AngleProperty, null);
             _shift.BeginAnimation(TranslateTransform.YProperty, null);
             _armRotate.BeginAnimation(RotateTransform.AngleProperty, null);
-            foreach (var z in new[] { _z1, _z2 }) { z.BeginAnimation(OpacityProperty, null); z.Opacity = 0; }
+            foreach (var z in new[] { _z1, _z2 }) { z.BeginAnimation(OpacityProperty, null); z.Opacity = 0; z.Visibility = Visibility.Collapsed; }
             _z1Shift.BeginAnimation(TranslateTransform.YProperty, null);
             _z2Shift.BeginAnimation(TranslateTransform.YProperty, null);
         }
@@ -240,6 +244,7 @@ namespace ClaudeNotch
                 fade.RepeatBehavior = RepeatBehavior.Forever;
                 fade.BeginTime = begin;
                 Timeline.SetDesiredFrameRate(fade, Fps);
+                (n == 0 ? _z1 : _z2).Visibility = Visibility.Visible;
                 (n == 0 ? _z1 : _z2).BeginAnimation(OpacityProperty, fade);
                 (n == 0 ? _z1Shift : _z2Shift).BeginAnimation(TranslateTransform.YProperty,
                     Loop(new DoubleAnimation(1, -1.5, Ms(3000)) { RepeatBehavior = RepeatBehavior.Forever, BeginTime = begin }, Fps));
@@ -330,6 +335,7 @@ namespace ClaudeNotch
             UIElement face = _state == BipState.Waiting ? _faceWaiting : _state == BipState.Running ? _faceRunning
                            : _state == BipState.Error ? _faceError : _faceReady;
             face.BeginAnimation(OpacityProperty, Steps(new[] { 0, 60, 180, 240 }, new[] { 1.0, 0, 0, 1 }));
+            _faceIdle.Visibility = Visibility.Visible;
             _faceIdle.BeginAnimation(OpacityProperty, Steps(new[] { 0, 60, 180, 240 }, new[] { 0.0, 1, 1, 0 }));
         }
 
@@ -337,6 +343,7 @@ namespace ClaudeNotch
         void Wave()
         {
             if (_state == BipState.Waiting) return;   // il s'agite deja
+            _arm.Visibility = Visibility.Visible;
             _arm.BeginAnimation(OpacityProperty, Steps(new[] { 0, 120, 900, 1050 }, new[] { 0.0, 1, 1, 0 }));
             _armRotate.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(-10, 12, Ms(180))
                 { AutoReverse = true, RepeatBehavior = new RepeatBehavior(2), BeginTime = TimeSpan.FromMilliseconds(100) });
@@ -385,15 +392,26 @@ namespace ClaudeNotch
 
         static Canvas Group(params UIElement[] children)
         {
-            var c = new Canvas { Opacity = 0 };
+            var c = new Canvas { Opacity = 0, Visibility = Visibility.Collapsed };
             foreach (var ch in children) c.Children.Add(ch);
             return c;
         }
 
+        // Un element transparent est aussi retire de l'affichage : en rendu logiciel, il serait
+        // redessine a chaque image d'un Bip qui bouge (mesure : ~1 point d'un coeur par Bip anime).
         static void Fade(UIElement el, double to, int ms)
         {
-            if (ms <= 0) { el.BeginAnimation(OpacityProperty, null); el.Opacity = to; return; }
-            el.BeginAnimation(OpacityProperty, new DoubleAnimation(to, Ms(ms)));
+            if (to > 0) el.Visibility = Visibility.Visible;
+            if (ms <= 0)
+            {
+                el.BeginAnimation(OpacityProperty, null);
+                el.Opacity = to;
+                if (to == 0) el.Visibility = Visibility.Collapsed;
+                return;
+            }
+            var a = new DoubleAnimation(to, Ms(ms));
+            if (to == 0) a.Completed += (s, e) => { if (el.Opacity == 0) el.Visibility = Visibility.Collapsed; };
+            el.BeginAnimation(OpacityProperty, a);
         }
 
         // Animations en boucle, lentes et de quelques pixels : pas besoin de 60 images/s.

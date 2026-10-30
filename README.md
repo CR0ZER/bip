@@ -51,19 +51,21 @@ Bip tourne en permanence à côté de ton travail : il doit se faire oublier, su
 
 **Audit de performance avant chaque release.** Chaque version est mesurée avant d'être publiée :
 consommation de l'encoche, mémoire, durée du hook comparée à la version précédente. Toute
-régression est corrigée avant la sortie. En 0.3.0, cet audit a par exemple révélé que des
-animations cachées doublaient la consommation après un dépliage : c'est corrigé.
+régression est corrigée avant la sortie. En 0.4.0, cet audit a par exemple révélé qu'un petit
+Bip endormi, caché, s'animait sans fin et doublait la consommation : c'est corrigé.
 
-**Mesures v0.3.0**, sur un PC portable Acer Nitro ANV15-52 : Intel Core i7-13620H (10 cœurs,
-16 threads), 32 Go de RAM, Windows 11.
+**Mesures v0.4.0**, comparées à la v0.3.0 (mêmes sessions, lancements alternés), sur un PC
+portable Acer Nitro ANV15-52 : Intel Core i7-13620H (10 cœurs, 16 threads), 32 Go de RAM,
+Windows 11.
 
 | Situation | Processeur | Mémoire |
 |---|---|---|
-| Une session au travail (Bip animé), y compris après des dépliages | ~2,3 % d'un cœur | ~76 Mo |
-| Aucun Bip animé (mesuré en v0.2) | < 1 % d'un cœur | ~70 Mo |
-| `NotchHook.exe`, par appel d'outil, journal d'audit et sous-agents compris | ~115 ms, en arrière-plan | — |
-| Relecture du journal d'audit après un ajout, grosse journée (10 000 évènements) | ~15 ms | — |
-| Rapport d'audit (1 200 évènements), généré en arrière-plan | ~0,8 s | — |
+| Une session au travail (Bip animé), encoche repliée | ~2,3 % d'un cœur, comme en 0.3.0 | ~66 Mo |
+| Aucun Bip animé (0,7 % mesuré en v0.3.0) | < 1 % d'un cœur | ~65 Mo |
+| `NotchHook.exe`, par appel d'outil, journal d'audit et sous-agents compris | ~120 ms, en arrière-plan | — |
+| Lecture de Git (fin de tour, ouverture de l'encoche ; jamais en continu) | ~65 ms, en arrière-plan | — |
+| Relecture du journal d'audit après un ajout, grosse journée (10 000 évènements) | < 1 ms | — |
+| Rapport d'audit (1 200 évènements), généré en arrière-plan | ~1 s | — |
 
 « % d'un cœur » : la part d'un seul cœur logique, soit 16 fois moins de la capacité totale de
 ce processeur. La durée du hook est surtout celle du démarrage de .NET (~90 ms sur ce PC). Le
@@ -86,10 +88,15 @@ détail des mesures est dans [`docs/CONCEPTION.md`](docs/CONCEPTION.md).
 | <img src="docs/screenshots/commandes.png" width="400" alt="Commandes en cours, finie et en échec, avec leur croix"> | <img src="docs/screenshots/reglages.png" width="400" alt="Réglages intégrés sous l'encoche vide"> |
 | En cours, finie ou en échec avec son code ; une croix les retire. | Le bouton ☰ ajoute les réglages sous le contenu de l'encoche. |
 
-| Sous-agents et fin de tour |
-|:---:|
-| <img src="docs/screenshots/sous-agents.png" width="560" alt="Session avec trois sous-agents en retrait, récap de fin de tour en vert, ne pas déranger en haut à gauche"> |
-| Sous chaque session, ses sous-agents en retrait ; en vert, le récap du tour d'une session prête. En haut à gauche, le « ne pas déranger » en cours. |
+| Sous-agents et fin de tour | Git dans l'encoche |
+|:---:|:---:|
+| <img src="docs/screenshots/sous-agents.png" width="400" alt="Session avec trois sous-agents en retrait, et récap de fin de tour en vert"> | <img src="docs/screenshots/git.png" width="400" alt="Branche, fichiers non commités et commits à pousser, détail déplié"> |
+| Sous chaque session, ses sous-agents en retrait ; en vert, le récap du tour d'une session prête. | Sous chaque session, sa branche et ce qui reste à commiter ou à pousser ; un clic déplie le détail. |
+
+| Ne pas déranger | Micro to-do list |
+|:---:|:---:|
+| <img src="docs/screenshots/ne-pas-deranger.png" width="400" alt="Bandeau ne pas déranger avec le Bip endormi et le bouton Reprendre, sessions immobiles"> | <img src="docs/screenshots/todo.png" width="400" alt="Liste de tâches sous les sessions, avec Ajouter à la todo liste"> |
+| Repliée, l'encoche ne montre que le Bip endormi ; dépliée, un bandeau dit jusqu'à quand. | Une idée à garder sans changer d'outil, sous les sessions ou dans l'encoche vide. |
 
 ## Bip
 
@@ -118,7 +125,11 @@ Le kit complet (SVG, PNG, valeurs de référence, aperçu animé) est dans [`des
   description et sa durée (5 au plus, puis « +N »). Fini, il passe au vert une minute, puis
   disparaît, sans entrouvrir l'encoche. Repliée, l'encoche garde un seul Bip par session.
 - **Récap de fin de tour** : quand une session rend la main, ce qu'elle a fait, en vert sous son
-  nom : « 3 fichiers modifiés · 2 commandes · 1 échec ».
+  nom : « 3 fichiers modifiés · 2 commandes · 1 échec », et ce qui reste à commiter.
+- **Git dans l'encoche** : sous chaque session, sa branche, ses fichiers non commités et ses
+  commits à pousser ; un clic déplie le détail. Lecture seule.
+- **Micro to-do list** : quelques tâches à garder sous la main, dans l'encoche ou depuis un
+  terminal (`bip todo "…"`).
 - **Permissions depuis l'encoche** : Autoriser, Refuser, ou « Toujours » avec la portée écrite
   sur le bouton (« Toujours : toutes les modifications de fichiers », « Toujours : Edit(src/\*\*) »…),
   limitée à la session. Jamais de « Toujours » pour les commandes shell.
@@ -140,7 +151,8 @@ Le kit complet (SVG, PNG, valeurs de référence, aperçu animé) est dans [`des
 - **Invisible quand il le faut** : masquée pendant les applis en plein écran.
 - **Réglages dans l'encoche** : le bouton **☰** en haut à droite de l'encoche dépliée (ou un
   clic droit) ajoute les réglages sous le contenu : ne pas déranger, sourdine pendant les
-  appels, clignotement, journal d'audit, règles créées par Bip, dossier d'état, quitter.
+  appels, clignotement, vérification des mises à jour, journal d'audit, règles créées par Bip,
+  dossier d'état, quitter.
 
 ### Suivre une commande longue : `bip run`
 
@@ -191,8 +203,12 @@ Bip garde la trace de **tout ce que les agents font sur le poste** : chaque comm
 modifié ou page consultée, qui l'a autorisé (toi dans Bip, toi dans Claude, une règle, le mode
 auto) et le résultat.
 
-- **Secrets masqués avant écriture** (jetons, clés d'API, mots de passe, identifiants dans les
-  adresses).
+- **Secrets masqués avant écriture** (jetons, clés d'API, mots de passe, variables `*_TOKEN`,
+  `*_KEY`, `*_PASSWORD`…, identifiants dans les adresses, clés privées). Les outils MCP sont
+  résumés par leurs arguments, masqués puis coupés.
+- **Plus léger à lire** : les lectures (`Read`, `Grep`…) tiennent sur une ligne, les outils
+  internes de Claude ne sont plus notés, et le rapport regroupe les actions identiques qui se
+  suivent (« ×3 »).
 - **Chaîne d'empreintes SHA-256** : une ligne modifiée ou supprimée après coup, ou une fin de
   journal tronquée, se voit. `ClaudeNotch.exe --verify-audit` la contrôle.
 - **Rapport** depuis les réglages de l'encoche (☰ → « Journal d'audit ») : une page autonome,
@@ -208,9 +224,11 @@ auto) et le résultat.
 Après **5 autorisations de la même commande dans un projet** (`npm test`, `pytest`…), Bip
 propose d'en faire une règle Claude Code, en affichant la règle exacte : **Ce projet** (écrite
 dans `.claude/settings.local.json`, non versionné), **Partout**, ou **Non, ne plus proposer**.
-Jamais de suggestion pour une commande composée, risquée (suppression, `git push`, réseau,
-interpréteur…) ou trop large. Les règles créées se retirent d'un clic depuis les réglages (☰), et chaque
-ajout ou retrait est inscrit au journal d'audit.
+Seules les commandes sans risque peuvent le devenir : tests, compilation et vérification (`npm
+test`, `pytest`, `cargo build`, `tsc`…), Git en lecture (`git status`, `git diff`…) et les scripts
+nommés (`npm run build`). Jamais une commande composée (`&&`, `|`, `;`…), ni rien hors de cette
+liste. Les règles créées se retirent d'un clic depuis les réglages (☰), et chaque ajout ou retrait
+est inscrit au journal d'audit.
 
 <p align="center"><img src="docs/screenshots/regle.png" width="560" alt="Carte de permission avec une règle suggérée : Ce projet, Partout, Non, ne plus proposer"></p>
 
@@ -275,6 +293,10 @@ flowchart LR
     H2 -- "décision JSON" --> CC
     AU --> RP["rapport d'audit<br/>(page HTML)"]
     N -- "☰ Journal d'audit" --> RP
+    BT["bip todo"] --> TD[("todo.txt<br/>to-do list")]
+    TD <--> N
+    N -- "git status, en lecture<br/>fin de tour, ouverture" --> GIT[("dépôts Git<br/>des sessions")]
+    N -. "à la demande<br/>numéro de version" .-> GH["GitHub<br/>dernière release"]
 ```
 
 - **L'état des sessions** passe par des hooks asynchrones : ils ne ralentissent jamais Claude.
@@ -285,7 +307,10 @@ flowchart LR
 - **Le journal d'audit** est écrit par le hook lui-même, à chaque outil, demande et décision :
   il est tenu même encoche fermée. L'encoche en tire le rapport à la demande.
 - **`bip run`** écrit son propre fichier d'état dans `state\` : une commande suivie apparaît
-  comme une session.
+  comme une session. **`bip todo`** ajoute une ligne à `todo.txt`, que l'encoche relit.
+- **Git** est lu par l'encoche, jamais en continu : en fin de tour et à l'ouverture, sans verrou.
+- **Le seul accès réseau** est la vérification des mises à jour, quand tu la demandes (ou une
+  fois par jour si tu l'as activée).
 - **Tout est compilé par le `csc.exe` livré avec Windows**, sans SDK : `build.cmd` suffit.
 
 ## Sécurité
@@ -297,8 +322,14 @@ flowchart LR
 - **Rien ne se valide au survol** : un clic complet est nécessaire, et les boutons ne s'arment
   qu'après 600 ms (ouverture, nouvelle carte ou liste qui bouge).
 - **Ce que tu lis est ce qui sera exécuté** : commande toujours affichée en entier (avec le
-  nombre de lignes si elle est longue), caractères invisibles ou d'inversion (U+202E…) rendus
-  visibles, description de Claude présentée comme telle (« Selon Claude : … »).
+  nombre de lignes si elle est longue), caractères invisibles ou d'inversion (U+202E…) et
+  longues suites d'espaces (« [90 espaces] ») rendus visibles, description de Claude présentée
+  comme telle (« Selon Claude : … »). Ce qui ne tient pas dans la carte est signalé en rouge
+  au-dessus des boutons (« Non affiché : … »).
+- **Publication vérifiable** : actions GitHub épinglées par empreinte, et attestation de
+  provenance sur chaque zip (`gh attestation verify`).
+
+<p align="center"><img src="docs/screenshots/permission-cachee.png" width="560" alt="Carte de permission : 90 espaces rendus visibles avant la suite de la commande"></p>
 
 ## Structure
 
@@ -385,19 +416,20 @@ Bip runs all day next to your work: it has to go unnoticed, on any PC.
 
 **Performance audit before every release.** Each version is measured before it ships: notch CPU
 and memory, hook duration compared with the previous version. Any regression is fixed before the
-release. In 0.3.0, for instance, this audit found that hidden animations doubled the CPU use after
-opening the notch: fixed.
+release. In 0.4.0, for instance, this audit found that a small hidden sleeping Bip kept animating
+and doubled the CPU use: fixed.
 
-**v0.3.0 measurements**, on an Acer Nitro ANV15-52 laptop: Intel Core i7-13620H (10 cores,
-16 threads), 32 GB RAM, Windows 11.
+**v0.4.0 measurements**, compared with v0.3.0 (same sessions, alternating runs), on an Acer Nitro
+ANV15-52 laptop: Intel Core i7-13620H (10 cores, 16 threads), 32 GB RAM, Windows 11.
 
 | Situation | CPU | Memory |
 |---|---|---|
-| One session working (Bip animated), including after opening the notch | ~2.3 % of one core | ~76 MB |
-| No animated Bip (measured in v0.2) | < 1 % of one core | ~70 MB |
-| `NotchHook.exe`, per tool call, audit log and sub-agents included | ~115 ms, in the background | — |
-| Re-reading the audit log after a new line, busy day (10,000 events) | ~15 ms | — |
-| Audit report (1,200 events), built in the background | ~0.8 s | — |
+| One session working (Bip animated), notch collapsed | ~2.3 % of one core, as in 0.3.0 | ~66 MB |
+| No animated Bip (0.7 % measured in v0.3.0) | < 1 % of one core | ~65 MB |
+| `NotchHook.exe`, per tool call, audit log and sub-agents included | ~120 ms, in the background | — |
+| Reading Git (end of turn, opening the notch; never continuously) | ~65 ms, in the background | — |
+| Re-reading the audit log after a new line, busy day (10,000 events) | < 1 ms | — |
+| Audit report (1,200 events), built in the background | ~1 s | — |
 
 "% of one core": the share of a single logical core, i.e. 16 times less than this CPU's total
 capacity. Most of the hook's time is .NET start-up (~90 ms on this PC). Measurement details are
@@ -420,10 +452,15 @@ in [`docs/CONCEPTION.md`](docs/CONCEPTION.md) (in French).
 | <img src="docs/screenshots/commandes.png" width="400" alt="Running, finished and failed commands, each with its cross"> | <img src="docs/screenshots/reglages.png" width="400" alt="Settings below the empty notch"> |
 | Running, done, or failed with its exit code; a cross removes them. | The ☰ button adds the settings below the notch content. |
 
-| Sub-agents and end of turn |
-|:---:|
-| <img src="docs/screenshots/sous-agents.png" width="560" alt="Session with three indented sub-agents, end-of-turn recap in green, do not disturb at the top left"> |
-| Under each session, its sub-agents; in green, the turn recap of a session that is done. At the top left, the current do-not-disturb. |
+| Sub-agents and end of turn | Git in the notch |
+|:---:|:---:|
+| <img src="docs/screenshots/sous-agents.png" width="400" alt="Session with three indented sub-agents, and end-of-turn recap in green"> | <img src="docs/screenshots/git.png" width="400" alt="Branch, uncommitted files and commits to push, detail open"> |
+| Under each session, its sub-agents; in green, the turn recap of a session that is done. | Under each session, its branch and what is left to commit or push; a click opens the detail. |
+
+| Do not disturb | Micro to-do list |
+|:---:|:---:|
+| <img src="docs/screenshots/ne-pas-deranger.png" width="400" alt="Do-not-disturb banner with sleeping Bip and the Resume button, sessions kept still"> | <img src="docs/screenshots/todo.png" width="400" alt="Task list under the sessions, with the add button"> |
+| Collapsed, the notch only shows sleeping Bip; open, a banner says until when. | An idea to keep without switching tools, under the sessions or in the empty notch. |
 
 ### Meet Bip
 
@@ -452,7 +489,11 @@ The full kit (SVG, PNG, reference values, animated preview) is in [`design/bip-m
   and duration (5 at most, then "+N"). Once done, it turns green for a minute, then goes away,
   without peeking the notch open. Collapsed, the notch keeps a single Bip per session.
 - **End-of-turn recap**: when a session hands back control, what it did, in green under its
-  name: "3 fichiers modifiés · 2 commandes · 1 échec".
+  name: "3 fichiers modifiés · 2 commandes · 1 échec", and what is left to commit.
+- **Git in the notch**: under each session, its branch, uncommitted files and commits to push;
+  a click opens the detail. Read-only.
+- **Micro to-do list**: a few tasks to keep at hand, in the notch or from a terminal
+  (`bip todo "…"`).
 - **Permissions from the notch**: Allow, Deny, or "Always" with its scope written on the button
   ("Always: all file edits", "Always: Edit(src/\*\*)"…), limited to the session. Never "Always"
   for shell commands.
@@ -472,7 +513,7 @@ The full kit (SVG, PNG, reference values, animated preview) is in [`design/bip-m
 - **Out of the way when needed**: hidden while a full-screen app is running.
 - **Settings inside the notch**: the **☰** button at the top right of the open notch (or a
   right-click) adds the settings below the content: do not disturb, mute during calls,
-  flashing, audit log, rules created by Bip, state folder, quit.
+  flashing, update check, audit log, rules created by Bip, state folder, quit.
 
 #### Follow a long command: `bip run`
 
@@ -520,7 +561,11 @@ moment to commit.
 Bip records **everything agents do on the machine**: every command, edited file or fetched page,
 who allowed it (you in Bip, you in Claude, a rule, auto mode) and the outcome.
 
-- **Secrets masked before writing** (tokens, API keys, passwords, credentials in URLs).
+- **Secrets masked before writing** (tokens, API keys, passwords, `*_TOKEN`, `*_KEY`,
+  `*_PASSWORD`… variables, credentials in URLs, private keys). MCP tools are summarised by their
+  arguments, masked then cut.
+- **Lighter to read**: reads (`Read`, `Grep`…) take one line, Claude's internal tools are no
+  longer logged, and the report groups identical consecutive actions ("×3").
 - **SHA-256 hash chain**: a line edited or deleted afterwards, or a truncated log, shows up.
   `ClaudeNotch.exe --verify-audit` checks it.
 - **Report** from the notch settings (☰ → "Journal d'audit"): a self-contained page, light or
@@ -535,10 +580,11 @@ who allowed it (you in Bip, you in Claude, a rule, auto mode) and the outcome.
 
 After **5 approvals of the same command in a project** (`npm test`, `pytest`…), Bip offers to
 turn it into a Claude Code rule and shows the exact rule: **this project** (written to the
-unversioned `.claude/settings.local.json`), **everywhere**, or **never suggest again**. Never for
-compound, risky (deletion, `git push`, network, interpreters…) or overly broad commands. Rules
-created by Bip can be removed in one click from the settings (☰), and every change is written to the
-audit log.
+unversioned `.claude/settings.local.json`), **everywhere**, or **never suggest again**. Only safe
+commands qualify: tests, builds and checks (`npm test`, `pytest`, `cargo build`, `tsc`…), read-only
+Git (`git status`, `git diff`…) and named scripts (`npm run build`). Never a compound command
+(`&&`, `|`, `;`…), nor anything outside this list. Rules created by Bip can be removed in one
+click from the settings (☰), and every change is written to the audit log.
 
 <p align="center"><img src="docs/screenshots/regle.png" width="560" alt="Permission card with a suggested rule: this project, everywhere, never suggest again"></p>
 
@@ -602,6 +648,10 @@ flowchart LR
     H2 -- "JSON decision" --> CC
     AU --> RP["audit report<br/>(HTML page)"]
     N -- "☰ Journal d'audit" --> RP
+    BT["bip todo"] --> TD[("todo.txt<br/>to-do list")]
+    TD <--> N
+    N -- "git status, read-only<br/>end of turn, opening" --> GIT[("Git repositories<br/>of the sessions")]
+    N -. "on demand<br/>version number" .-> GH["GitHub<br/>latest release"]
 ```
 
 - **Session state** goes through async hooks, so they never slow Claude down. `NotchHook.exe`
@@ -612,6 +662,10 @@ flowchart LR
 - **The audit log** is written by the hook itself, on every tool call, request and decision, so it
   is kept even when the notch is closed. The notch builds the report from it on demand.
 - **`bip run`** writes its own state file into `state\`: a tracked command shows up like a session.
+  **`bip todo`** adds a line to `todo.txt`, which the notch reads back.
+- **Git** is read by the notch, never continuously: at the end of a turn and on opening, with no lock.
+- **The only network access** is the update check, when you ask for it (or once a day if you
+  turned it on).
 - **Everything is built with the `csc.exe` that ships with Windows**, no SDK: `build.cmd` is enough.
 
 ### Security
@@ -623,8 +677,13 @@ flowchart LR
 - **Nothing is approved on hover**: a full click is required, and buttons only arm after 600 ms
   (opening, new card or a list that moves).
 - **What you read is what runs**: the command is always shown in full (with its line count when
-  long), invisible or bidirectional characters (U+202E…) are made visible, and Claude's own
-  description is labelled as such ("Selon Claude : …").
+  long), invisible or bidirectional characters (U+202E…) and long runs of spaces ("[90
+  espaces]") are made visible, and Claude's own description is labelled as such ("Selon Claude :
+  …"). Whatever does not fit in the card is flagged in red above the buttons ("Non affiché : …").
+- **Verifiable releases**: GitHub actions pinned by hash, and a provenance attestation on every
+  zip (`gh attestation verify`).
+
+<p align="center"><img src="docs/screenshots/permission-cachee.png" width="560" alt="Permission card: 90 spaces made visible before the rest of the command"></p>
 
 ### Layout
 

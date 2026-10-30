@@ -2,6 +2,48 @@
 
 Les versions suivent [SemVer](https://semver.org/lang/fr/). Chaque section sert de notes à la release GitHub correspondante.
 
+## [0.4.0] - 2026-10-30
+
+Plus sûr, plus lisible, et Git, la to-do et les mises à jour dans l'encoche. · *Safer, easier to read, with Git, a to-do list and update checks in the notch.*
+
+### Sécurité
+
+- **Règles suggérées en liste blanche** : seules les commandes de test, de compilation, de vérification et Git en lecture (`npm test`, `pytest`, `cargo build`, `tsc`, `git status`…), et les scripts nommés (`npm run build`), peuvent devenir une règle. Jamais une commande composée (`&&`, `|`, `;`, redirection…). Une règle créée avant la 0.4 qui sort de la liste est signalée « plus suggérée par Bip » dans les réglages.
+- **Secrets mieux masqués** : variables `*_TOKEN`, `*_KEY`, `*_PASSWORD`, `*_SECRET`…, `mysql -p`, `sshpass -p`, `ConvertTo-SecureString`, clés privées. Les outils MCP sont résumés par leurs arguments, masqués puis coupés à 80 caractères. Le libellé d'un `bip run` est masqué lui aussi.
+- **Carte de permission : plus rien de caché** : les longues suites d'espaces sont rendues visibles (« [90 espaces] »), et ce qui ne tient pas dans la carte est signalé en rouge au-dessus des boutons (« Non affiché : … »).
+- **Publication vérifiable** : actions GitHub épinglées par empreinte, attestation de provenance sur chaque zip (`gh attestation verify Bip-v0.4.0.zip -R CR0ZER/bip`).
+
+### Nouveautés
+
+- **Git dans l'encoche** : sous chaque session, sa branche, ses fichiers non commités et ses commits à pousser (« non publiée » sans branche distante) ; le récap de fin de tour l'ajoute. Un clic déplie le détail (8 fichiers, 5 commits). Lecture seule, jamais en continu (fin de tour, ouverture de l'encoche), sans verrou ni commande configurée par le dépôt (fsmonitor, hooks, signatures, sous-modules).
+- **Micro to-do list** : dans l'encoche vide (3 tâches, puis « +N »), ou sous les sessions avec la case en haut de l'encoche dépliée. « + Ajouter à la todo liste », cocher pour effacer (3 s pour annuler). Depuis un terminal : `bip todo "texte"`. Les tâches sont dans `todo.txt`.
+- **Vérification des mises à jour** : dans les réglages, à côté du numéro de version (« à jour » ou « v0.4.1 disponible ↗ »). Option « chaque jour », désactivée par défaut ; un point vert sur le ☰ signale une nouvelle version. Bip ne télécharge ni n'installe rien.
+- **« Ne pas déranger » : le Bip endormi** (bleu, antenne en croissant de lune, deux « z ») remplace la lune. Repliée, l'encoche ne montre que lui ; dépliée, un bandeau en tête dit jusqu'à quand, avec **Reprendre**, et les sessions restent visibles, immobiles. Sans session, le grand Bip de l'encoche vide s'endort.
+- **Journal d'audit plus léger** (−47 % sur un vrai journal) : les lectures (`Read`, `Grep`…) tiennent sur une ligne, les outils internes de Claude ne sont plus notés, objets coupés à 500 caractères. Le rapport regroupe les actions identiques qui se suivent (« ×3 »).
+
+### Confort
+
+- Textes secondaires plus lisibles : gris #BDBDBD au lieu de #A3A3A3.
+- « Au repos » devient « inactif » : une session ouverte qui ne fait rien n'est pas un Bip qui dort.
+
+### Corrections
+
+- Le rapport d'audit ne se casse plus sur un chemin contenant un caractère invalide ; une session au titre illisible ne prive plus les autres de leur titre.
+
+### Performances
+
+Mesurées contre la 0.3.0, mêmes sessions, lancements alternés (Acer Nitro ANV15-52, i7-13620H, 32 Go, Windows 11) :
+
+- Encoche : ~2,3 % d'un cœur avec une session au travail, comme en 0.3.0 ; ~66 Mo. Un Bip caché n'anime plus rien, et ses éléments transparents ne sont plus redessinés.
+- Hook : 122 ms par appel (127 ms en 0.3.0).
+- Lecture Git : ~65 ms, en arrière-plan, une fois en fin de tour ou à l'ouverture ; aucune quand l'encoche reste fermée.
+- Relecture du journal d'audit après un ajout (10 000 évènements) : 0,4 ms (4,6 ms en 0.3.0).
+- Rapport d'audit (1 200 évènements) : ~1 s, inchangé.
+
+### English summary
+
+Safer: suggested rules limited to a whitelist of test, build, check and read-only Git commands, stronger secret masking (MCP tools included), nothing hidden on the permission card any more, pinned GitHub actions and a provenance attestation on every zip. New: Git status under each session, a micro to-do list (`bip todo`), an opt-in update check, and sleeping Bip for do-not-disturb. The audit log is 47 % lighter and the report groups repeated actions. Same footprint as 0.3.0.
+
 ## [0.3.0] - 2026-10-14
 
 Bip montre ce qui se passe dans une session : ses sous-agents, son nom, ce qu'elle a fait. · *Bip now shows what happens inside a session: its sub-agents, its name, what it did.*
